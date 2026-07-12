@@ -441,9 +441,9 @@ const KVDB_BUCKET='DJLyffPfqEPN2pwrRjMuVN';
 const LS_KEY='xcj_userB_v1';
 const BC=new BroadcastChannel('xcj_sync_B');
 let _saveTimer=null;
-let _cloudLoaded=false;
-let _cloudTime=0;       // Timestamp from cloud data
-let _localDirty=false;  // True if user has made changes
+let _cloudTime=0;
+let _lastCloudJson='';
+let _pollTimer=null;
 function defaultData(){return{tasks:[],xp:0,totalCompleted:0,streak:0,maxStreak:0,badges:[],customBadges:[],dailyLog:{},lastActive:null,profile:{name:'我',avatar:'🐱'},dock:['today','calendar','history','badges','goals'],routines:[],goals:[],goalLogs:{},lastRoutineGen:null,theme:'purple',createdAt:new Date().toISOString().split('T')[0],_v:3}}
 function mergeData(d){
   const def=defaultData();
@@ -454,66 +454,55 @@ function loadData(){
   return defaultData();
 }
 function _isDefault(d){
-  const def=defaultData();
   return d.tasks.length===0&&d.xp===0&&d.totalCompleted===0&&d.streak===0&&d.maxStreak===0&&d.badges.length===0&&d.customBadges.length===0&&d.lastActive===null&&d.profile.name==='我'&&d.goals.length===0&&d.routines.length===0;
 }
 async function kvSave(){
-  if(!_cloudLoaded)return;
-  if(_isDefault(ud))return;  // Never upload default/empty data
+  if(_isDefault(ud))return;
   const payload={...ud,_t:Date.now()};
   const json=JSON.stringify(payload);
+  if(json===_lastCloudJson)return;
   try{
     const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data',{method:'POST',headers:{'Content-Type':'application/json'},body:json});
-    if(r.ok)_cloudTime=payload._t;
+    if(r.ok){_lastCloudJson=json;_cloudTime=payload._t}
     _showSync(r.ok?'ok':'fail');
   }catch(e){_showSync('fail')}
 }
 function _showSync(status){
   const d=document.getElementById('_syncDot');
   if(!d)return;
-  d.style.display='inline-block';
-  d.style.width='8px';d.style.height='8px';d.style.borderRadius='50%';
-  d.style.marginLeft='6px';
-  if(status==='ok'){d.style.background='#22C55E';d.title='已同步'}
-  else{d.style.background='#EF4444';d.title='同步失败'}
+  d.style.display='inline-block';d.style.width='8px';d.style.height='8px';d.style.borderRadius='50%';d.style.marginLeft='6px';
+  d.style.background=status==='ok'?'#22C55E':'#EF4444';
+  d.title=status==='ok'?'已同步':'同步失败';
   if(status==='ok')setTimeout(()=>{if(d)d.style.display='none'},2000);
 }
 function saveData(){
-  _localDirty=true;
   const json=JSON.stringify(ud);
   try{localStorage.setItem(LS_KEY,json)}catch(e){}
   BC.postMessage(json);
   clearTimeout(_saveTimer);
-  _saveTimer=setTimeout(()=>kvSave(),500);
+  _saveTimer=setTimeout(kvSave,200);
 }
-// Poll cloud every 5s for cross-device real-time sync
 async function kvPoll(){
+  if(document.hidden)return;
   try{
     const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
     if(!r.ok)return;
     const d=await r.json();
     if(!d||!Array.isArray(d.tasks))return;
-    // Only update if cloud data is newer than what we last saw
+    const cloudJson=JSON.stringify(d);
+    if(cloudJson===_lastCloudJson)return;
     if(d._t&&d._t>_cloudTime){
-      ud=mergeData(d);
-      _cloudTime=d._t;
+      ud=mergeData(d);_cloudTime=d._t;_lastCloudJson=cloudJson;
       applyTheme(ud.theme||'purple');
       try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}
       renderAll();renderDock();
     }
   }catch(e){}
 }
-setInterval(kvPoll,5000);
-window.addEventListener('beforeunload',()=>{
-  clearTimeout(_saveTimer);
-  if(_cloudLoaded&&_localDirty)kvSave();
-});
-BC.onmessage=e=>{
-  try{
-    const d=JSON.parse(e.data);
-    if(d&&Array.isArray(d.tasks)){ud=mergeData(d);applyTheme(ud.theme||'purple');try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}renderAll();renderDock()}
-  }catch(e){}
-};
+_pollTimer=setInterval(kvPoll,3000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')kvPoll()});
+window.addEventListener('beforeunload',()=>{clearTimeout(_saveTimer);if(!_isDefault(ud))kvSave()});
+BC.onmessage=e=>{try{const d=JSON.parse(e.data);if(d&&Array.isArray(d.tasks)){ud=mergeData(d);applyTheme(ud.theme||'purple');try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}renderAll();renderDock()}}catch(e){}};
 
 function today(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 const td=today();
@@ -1133,8 +1122,7 @@ document.addEventListener('DOMContentLoaded',async()=>{
   const sb=document.querySelector('.desktop-only nav');
   if(sb){const wrap=document.createElement('div');wrap.innerHTML=deskInputHtml;sb.insertBefore(wrap.firstChild,sb.firstChild)}
   genRoutineTasks();renderAll();renderDock();setView('today');
-  // Load from kvdb first, block uploads until success
-  let _cloudOk=false;
+  // Load from kvdb
   try{
     const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
     if(r.ok){
@@ -1142,20 +1130,13 @@ document.addEventListener('DOMContentLoaded',async()=>{
       if(d&&Array.isArray(d.tasks)){
         ud=mergeData(d);
         if(d._t)_cloudTime=d._t;
+        _lastCloudJson=JSON.stringify(d);
         applyTheme(ud.theme||'purple');
         try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}
         renderAll();renderDock();_showSync('ok');
-        _cloudOk=true;
       }
     }
   }catch(e){}
-  if(_cloudOk){_cloudLoaded=true}
-  if(!_cloudOk){setTimeout(async()=>{
-    try{
-      const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
-      if(r.ok){const d=await r.json();if(d&&Array.isArray(d.tasks)){ud=mergeData(d);if(d._t)_cloudTime=d._t;applyTheme(ud.theme||'purple');try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}renderAll();renderDock();_cloudLoaded=true}}
-    }catch(e){}
-  },3000)}
 });
 // Fallback: if DOMContentLoaded already fired, re-render on window load
 window.addEventListener('load',()=>{setTimeout(()=>{renderHeader();renderDock()},100)});
