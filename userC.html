@@ -441,8 +441,9 @@ const KVDB_BUCKET='QwkS7dezLGzSo8Q8fHQQZF';
 const LS_KEY='xcj_userC_v1';
 const BC=new BroadcastChannel('xcj_sync_C');
 let _saveTimer=null;
-let _cloudLoaded=false;  // Block uploads until cloud data is loaded
-let _lastSaveTime=0;    // Track last local save time
+let _cloudLoaded=false;
+let _cloudTime=0;       // Timestamp from cloud data
+let _localDirty=false;  // True if user has made changes
 function defaultData(){return{tasks:[],xp:0,totalCompleted:0,streak:0,maxStreak:0,badges:[],customBadges:[],dailyLog:{},lastActive:null,profile:{name:'我',avatar:'🐱'},dock:['today','calendar','history','badges','goals'],routines:[],goals:[],goalLogs:{},lastRoutineGen:null,theme:'purple',createdAt:new Date().toISOString().split('T')[0],_v:3}}
 function mergeData(d){
   const def=defaultData();
@@ -452,10 +453,18 @@ function loadData(){
   try{const raw=localStorage.getItem(LS_KEY);if(raw){const d=JSON.parse(raw);if(d&&Array.isArray(d.tasks))return mergeData(d)}}catch(e){}
   return defaultData();
 }
-async function kvSave(json){
-  if(!_cloudLoaded)return;  // Don't upload until cloud data is loaded
+function _isDefault(d){
+  const def=defaultData();
+  return d.tasks.length===0&&d.xp===0&&d.totalCompleted===0&&d.streak===0&&d.maxStreak===0&&d.badges.length===0&&d.customBadges.length===0&&d.lastActive===null&&d.profile.name==='我'&&d.goals.length===0&&d.routines.length===0;
+}
+async function kvSave(){
+  if(!_cloudLoaded)return;
+  if(_isDefault(ud))return;  // Never upload default/empty data
+  const payload={...ud,_t:Date.now()};
+  const json=JSON.stringify(payload);
   try{
     const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data',{method:'POST',headers:{'Content-Type':'application/json'},body:json});
+    if(r.ok)_cloudTime=payload._t;
     _showSync(r.ok?'ok':'fail');
   }catch(e){_showSync('fail')}
 }
@@ -470,16 +479,34 @@ function _showSync(status){
   if(status==='ok')setTimeout(()=>{if(d)d.style.display='none'},2000);
 }
 function saveData(){
+  _localDirty=true;
   const json=JSON.stringify(ud);
-  _lastSaveTime=Date.now();
   try{localStorage.setItem(LS_KEY,json)}catch(e){}
   BC.postMessage(json);
   clearTimeout(_saveTimer);
-  _saveTimer=setTimeout(()=>kvSave(json),500);
+  _saveTimer=setTimeout(()=>kvSave(),500);
 }
+// Poll cloud every 5s for cross-device real-time sync
+async function kvPoll(){
+  try{
+    const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
+    if(!r.ok)return;
+    const d=await r.json();
+    if(!d||!Array.isArray(d.tasks))return;
+    // Only update if cloud data is newer than what we last saw
+    if(d._t&&d._t>_cloudTime){
+      ud=mergeData(d);
+      _cloudTime=d._t;
+      applyTheme(ud.theme||'purple');
+      try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}
+      renderAll();renderDock();
+    }
+  }catch(e){}
+}
+setInterval(kvPoll,5000);
 window.addEventListener('beforeunload',()=>{
   clearTimeout(_saveTimer);
-  if(_cloudLoaded)kvSave(JSON.stringify(ud));
+  if(_cloudLoaded&&_localDirty)kvSave();
 });
 BC.onmessage=e=>{
   try{
@@ -1106,7 +1133,7 @@ document.addEventListener('DOMContentLoaded',async()=>{
   const sb=document.querySelector('.desktop-only nav');
   if(sb){const wrap=document.createElement('div');wrap.innerHTML=deskInputHtml;sb.insertBefore(wrap.firstChild,sb.firstChild)}
   genRoutineTasks();renderAll();renderDock();setView('today');
-  // Load from kvdb first, block all uploads until success
+  // Load from kvdb first, block uploads until success
   let _cloudOk=false;
   try{
     const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
@@ -1114,6 +1141,7 @@ document.addEventListener('DOMContentLoaded',async()=>{
       const d=await r.json();
       if(d&&Array.isArray(d.tasks)){
         ud=mergeData(d);
+        if(d._t)_cloudTime=d._t;
         applyTheme(ud.theme||'purple');
         try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}
         renderAll();renderDock();_showSync('ok');
@@ -1121,13 +1149,11 @@ document.addEventListener('DOMContentLoaded',async()=>{
       }
     }
   }catch(e){}
-  // Only allow uploads if cloud load succeeded
   if(_cloudOk){_cloudLoaded=true}
-  // If cloud failed, try again in 3 seconds
   if(!_cloudOk){setTimeout(async()=>{
     try{
       const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
-      if(r.ok){const d=await r.json();if(d&&Array.isArray(d.tasks)){ud=mergeData(d);applyTheme(ud.theme||'purple');try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}renderAll();renderDock();_cloudLoaded=true}}
+      if(r.ok){const d=await r.json();if(d&&Array.isArray(d.tasks)){ud=mergeData(d);if(d._t)_cloudTime=d._t;applyTheme(ud.theme||'purple');try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}renderAll();renderDock();_cloudLoaded=true}}
     }catch(e){}
   },3000)}
 });
