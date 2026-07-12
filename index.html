@@ -442,7 +442,6 @@ const LS_KEY='xcj_userA_v1';
 const BC=new BroadcastChannel('xcj_sync_A');
 let _saveTimer=null;
 let _cloudTime=0;
-let _lastCloudJson='';
 let _pollTimer=null;
 function defaultData(){return{tasks:[],xp:0,totalCompleted:0,streak:0,maxStreak:0,badges:[],customBadges:[],dailyLog:{},lastActive:null,profile:{name:'我',avatar:'🐱'},dock:['today','calendar','history','badges','goals'],routines:[],goals:[],goalLogs:{},lastRoutineGen:null,theme:'purple',createdAt:new Date().toISOString().split('T')[0],_v:3}}
 function mergeData(d){
@@ -459,11 +458,12 @@ function _isDefault(d){
 async function kvSave(){
   if(_isDefault(ud))return;
   const payload={...ud,_t:Date.now()};
+  // Skip if cloud already has this or newer data
+  if(payload._t<=_cloudTime&&_cloudTime>0)return;
   const json=JSON.stringify(payload);
-  if(json===_lastCloudJson)return;
   try{
     const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data',{method:'POST',headers:{'Content-Type':'application/json'},body:json});
-    if(r.ok){_lastCloudJson=json;_cloudTime=payload._t}
+    if(r.ok){_cloudTime=payload._t}
     _showSync(r.ok?'ok':'fail');
   }catch(e){_showSync('fail')}
 }
@@ -489,10 +489,9 @@ async function kvPoll(){
     if(!r.ok)return;
     const d=await r.json();
     if(!d||!Array.isArray(d.tasks))return;
-    const cloudJson=JSON.stringify(d);
-    if(cloudJson===_lastCloudJson)return;
+    // Use timestamp comparison, not JSON string comparison (order may differ)
     if(d._t&&d._t>_cloudTime){
-      ud=mergeData(d);_cloudTime=d._t;_lastCloudJson=cloudJson;
+      ud=mergeData(d);_cloudTime=d._t;
       applyTheme(ud.theme||'purple');
       try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}
       renderAll();renderDock();
@@ -542,13 +541,16 @@ function delTask(id){ud.tasks=ud.tasks.filter(t=>t.id!==id);closeDetail();saveDa
 function updTask(id,o){const t=ud.tasks.find(t=>t.id===id);if(t)Object.assign(t,o);saveData();renderAll()}
 function genRoutineTasks(){
   if(ud.lastRoutineGen===td)return;
+  let added=false;
   (ud.routines||[]).forEach(r=>{
     const exists=ud.tasks.some(t=>t.createdAt===td&&t.fromRoutine===r.id);
     if(!exists){
       ud.tasks.push({id:Date.now()+Math.random(),title:r.title,category:r.category||'work',time:r.time||'',priority:r.priority||'mid',completed:false,createdAt:td,completedAt:null,fromRoutine:r.id});
+      added=true;
     }
   });
-  ud.lastRoutineGen=td;saveData();
+  ud.lastRoutineGen=td;
+  if(added)saveData();
 }
 
 // ==================== BADGES ====================
@@ -1131,7 +1133,6 @@ document.addEventListener('DOMContentLoaded',async()=>{
       if(d&&Array.isArray(d.tasks)){
         ud=mergeData(d);
         if(d._t)_cloudTime=d._t;
-        _lastCloudJson=JSON.stringify(d);
         applyTheme(ud.theme||'purple');
         try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}
         renderAll();renderDock();_showSync('ok');
