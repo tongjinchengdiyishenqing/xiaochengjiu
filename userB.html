@@ -1106,22 +1106,30 @@ document.addEventListener('DOMContentLoaded',async()=>{
   const sb=document.querySelector('.desktop-only nav');
   if(sb){const wrap=document.createElement('div');wrap.innerHTML=deskInputHtml;sb.insertBefore(wrap.firstChild,sb.firstChild)}
   genRoutineTasks();renderAll();renderDock();setView('today');
-  // Load from kvdb (only if cloud has data and local is default/empty)
+  // Load from kvdb first, block all uploads until success
+  let _cloudOk=false;
   try{
     const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
     if(r.ok){
       const d=await r.json();
       if(d&&Array.isArray(d.tasks)){
-        // Use cloud data as the source of truth
         ud=mergeData(d);
         applyTheme(ud.theme||'purple');
         try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}
         renderAll();renderDock();_showSync('ok');
+        _cloudOk=true;
       }
     }
   }catch(e){}
-  // Now allow uploads
-  _cloudLoaded=true;
+  // Only allow uploads if cloud load succeeded
+  if(_cloudOk){_cloudLoaded=true}
+  // If cloud failed, try again in 3 seconds
+  if(!_cloudOk){setTimeout(async()=>{
+    try{
+      const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
+      if(r.ok){const d=await r.json();if(d&&Array.isArray(d.tasks)){ud=mergeData(d);applyTheme(ud.theme||'purple');try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}renderAll();renderDock();_cloudLoaded=true}}
+    }catch(e){}
+  },3000)}
 });
 // Fallback: if DOMContentLoaded already fired, re-render on window load
 window.addEventListener('load',()=>{setTimeout(()=>{renderHeader();renderDock()},100)});
