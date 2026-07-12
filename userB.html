@@ -436,7 +436,7 @@ const SYS_BADGES=[
 ];
 
 // ==================== DATA (localStorage + kvdb + BroadcastChannel) ====================
-const ud=loadData();
+let ud=loadData();
 const KVDB_BUCKET='DJLyffPfqEPN2pwrRjMuVN';
 const LS_KEY='xcj_userB_v1';
 const BC=new BroadcastChannel('xcj_sync_B');
