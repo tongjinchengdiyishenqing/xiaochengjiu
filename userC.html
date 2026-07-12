@@ -42,7 +42,7 @@ input,select,textarea{font-family:inherit;outline:none;border:none}
     <div class="flex items-center gap-2">
       <button onclick="showProfile()" class="flex items-center gap-1.5 bg-[#18181B] px-2 py-1 rounded-lg">
         <span id="mobAvatar" class="text-base"></span>
-        <span id="mobName" class="text-[11px] text-gray-400 font-medium max-w-[60px] truncate"></span>
+        <span id="mobName" class="text-[11px] text-gray-400 font-medium max-w-[60px] truncate"></span><span id="_syncDot" style="display:none"></span>
       </button>
       <div class="flex items-center gap-1 bg-[#18181B] px-2 py-1 rounded-lg">
         <span class="text-[10px] text-gray-500">Lv.</span><span id="mobLv" class="text-xs font-bold" style="color:var(--ac)">1</span>
@@ -451,7 +451,20 @@ function loadData(){
   return defaultData();
 }
 async function kvSave(json){
-  try{await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data',{method:'POST',headers:{'Content-Type':'application/json'},body:json})}catch(e){}
+  try{
+    const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data',{method:'POST',headers:{'Content-Type':'application/json'},body:json});
+    _showSync(r.ok?'ok':'fail');
+  }catch(e){_showSync('fail')}
+}
+function _showSync(status){
+  const d=document.getElementById('_syncDot');
+  if(!d)return;
+  d.style.display='inline-block';
+  d.style.width='8px';d.style.height='8px';d.style.borderRadius='50%';
+  d.style.marginLeft='6px';
+  if(status==='ok'){d.style.background='#22C55E';d.title='已同步'}
+  else{d.style.background='#EF4444';d.title='同步失败'}
+  if(status==='ok')setTimeout(()=>{if(d)d.style.display='none'},2000);
 }
 function saveData(){
   const json=JSON.stringify(ud);
@@ -1094,7 +1107,7 @@ document.addEventListener('DOMContentLoaded',async()=>{
     const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
     if(r.ok){
       const d=await r.json();
-      if(d&&Array.isArray(d.tasks)){ud=mergeData(d);applyTheme(ud.theme||'purple');try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}renderAll();renderDock()}
+      if(d&&Array.isArray(d.tasks)){ud=mergeData(d);applyTheme(ud.theme||'purple');try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}renderAll();renderDock();_showSync('ok')}
     }
   }catch(e){}
 });
