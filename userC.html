@@ -435,10 +435,12 @@ const SYS_BADGES=[
   {id:'hidden_perfect',name:'完美主义',icon:'🔮',desc:'解锁所有徽章',hidden:true,badges:25,condition:'???'},
 ];
 
-// ==================== DATA (localStorage + Cloud Sync) ====================
+// ==================== DATA (localStorage + Gist + BroadcastChannel) ====================
 const ud=loadData();
-const CLOUD_URL='https://api.jsonblob.com/api/jsonBlob';
-const CLOUD_ID='019f5855-7882-797c-a343-6b00f57da01b';
+const GIST_ID='109d1f31f3df40aedf18db7e154cb76c';
+const GIST_TOKEN='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';
+const LS_KEY='xcj_userC_v1';
+const BC=new BroadcastChannel('xcj_sync_C');
 let _saveTimer=null;
 function defaultData(){return{tasks:[],xp:0,totalCompleted:0,streak:0,maxStreak:0,badges:[],customBadges:[],dailyLog:{},lastActive:null,profile:{name:'我',avatar:'🐱'},dock:['today','calendar','history','badges','goals'],routines:[],goals:[],goalLogs:{},lastRoutineGen:null,theme:'purple',createdAt:new Date().toISOString().split('T')[0],_v:3}}
 function mergeData(d){
@@ -446,34 +448,33 @@ function mergeData(d){
   return{...def,...d,profile:{...def.profile,...(d.profile||{})},dock:d.dock||def.dock,routines:d.routines||[],goals:d.goals||[],goalLogs:d.goalLogs||{},lastRoutineGen:d.lastRoutineGen||null,theme:d.theme||'purple',_v:3};
 }
 function loadData(){
-  try{const raw=localStorage.getItem('xcj_userC_v1');if(raw){const d=JSON.parse(raw);if(d&&Array.isArray(d.tasks))return mergeData(d)}}catch(e){}
+  try{const raw=localStorage.getItem(LS_KEY);if(raw){const d=JSON.parse(raw);if(d&&Array.isArray(d.tasks))return mergeData(d)}}catch(e){}
   return defaultData();
+}
+function gistUrl(){return'https://api.github.com/gists/'+GIST_ID}
+function gistHeaders(){return{'Authorization':'token '+GIST_TOKEN,'Content-Type':'application/json','Accept':'application/vnd.github.v3+json'}}
+async function gistSave(json){
+  try{
+    await fetch(gistUrl(),{method:'PATCH',headers:gistHeaders(),body:JSON.stringify({"files":{"data.json":{"content":json}}})});
+  }catch(e){}
 }
 function saveData(){
   const json=JSON.stringify(ud);
-  try{localStorage.setItem('xcj_userC_v1',json)}catch(e){}
+  try{localStorage.setItem(LS_KEY,json)}catch(e){}
+  BC.postMessage(json);
   clearTimeout(_saveTimer);
-  _saveTimer=setTimeout(async()=>{
-    try{
-      const r=await fetch(CLOUD_URL+'/'+CLOUD_ID,{method:'PUT',headers:{'Content-Type':'application/json'},body:json});
-      if(!r.ok)throw new Error('PUT failed');
-    }catch(e){
-      try{
-        const r2=await fetch(CLOUD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:json});
-        if(r2.ok){
-          const loc=r2.headers.get('Location')||'';
-          const newId=loc.replace(/^\//,'');
-          if(newId){CLOUD_ID=newId;try{localStorage.setItem('xcj_cloudC_cloud',newId)}catch(x){}}
-        }
-      }catch(e2){}
-    }
-  },300);
+  _saveTimer=setTimeout(()=>gistSave(json),300);
 }
 window.addEventListener('beforeunload',()=>{
-  const json=JSON.stringify(ud);
   clearTimeout(_saveTimer);
-  navigator.sendBeacon(CLOUD_URL+'/'+CLOUD_ID,json);
+  gistSave(JSON.stringify(ud));
 });
+BC.onmessage=e=>{
+  try{
+    const d=JSON.parse(e.data);
+    if(d&&Array.isArray(d.tasks)){ud=mergeData(d);applyTheme(ud.theme||'purple');try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}renderAll();renderDock()}
+  }catch(e){}
+};
 
 function today(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 const td=today();
@@ -1093,14 +1094,13 @@ document.addEventListener('DOMContentLoaded',async()=>{
   const sb=document.querySelector('.desktop-only nav');
   if(sb){const wrap=document.createElement('div');wrap.innerHTML=deskInputHtml;sb.insertBefore(wrap.firstChild,sb.firstChild)}
   genRoutineTasks();renderAll();renderDock();setView('today');
-  // Load from cloud (override local if cloud has newer data)
+  // Load from Gist (override local if cloud has newer data)
   try{
-    const savedCloudId=localStorage.getItem('xcj_cloudC_cloud');
-    if(savedCloudId)CLOUD_ID=savedCloudId;
-    const r=await fetch(CLOUD_URL+'/'+CLOUD_ID);
+    const r=await fetch(gistUrl(),{headers:gistHeaders()});
     if(r.ok){
-      const d=await r.json();
-      if(d&&Array.isArray(d.tasks)){ud=mergeData(d);applyTheme(ud.theme||'purple');saveData();renderAll();renderDock()}
+      const g=await r.json();
+      const raw=g.files&&g.files['data.json']&&g.files['data.json'].content;
+      if(raw){const d=JSON.parse(raw);if(d&&Array.isArray(d.tasks)){ud=mergeData(d);applyTheme(ud.theme||'purple');try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}renderAll();renderDock()}}
     }
   }catch(e){}
 });
