@@ -453,8 +453,20 @@ function saveData(){
   const json=JSON.stringify(ud);
   try{localStorage.setItem('xcj_userC_v1',json)}catch(e){}
   clearTimeout(_saveTimer);
-  _saveTimer=setTimeout(()=>{
-    fetch(CLOUD_URL+'/'+CLOUD_ID,{method:'PUT',headers:{'Content-Type':'application/json'},body:json}).catch(()=>{});
+  _saveTimer=setTimeout(async()=>{
+    try{
+      const r=await fetch(CLOUD_URL+'/'+CLOUD_ID,{method:'PUT',headers:{'Content-Type':'application/json'},body:json});
+      if(!r.ok)throw new Error('PUT failed');
+    }catch(e){
+      try{
+        const r2=await fetch(CLOUD_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:json});
+        if(r2.ok){
+          const loc=r2.headers.get('Location')||'';
+          const newId=loc.replace(/^\//,'');
+          if(newId){CLOUD_ID=newId;try{localStorage.setItem('xcj_cloudC_cloud',newId)}catch(x){}}
+        }
+      }catch(e2){}
+    }
   },300);
 }
 window.addEventListener('beforeunload',()=>{
@@ -1083,6 +1095,8 @@ document.addEventListener('DOMContentLoaded',async()=>{
   genRoutineTasks();renderAll();renderDock();setView('today');
   // Load from cloud (override local if cloud has newer data)
   try{
+    const savedCloudId=localStorage.getItem('xcj_cloudC_cloud');
+    if(savedCloudId)CLOUD_ID=savedCloudId;
     const r=await fetch(CLOUD_URL+'/'+CLOUD_ID);
     if(r.ok){
       const d=await r.json();
