@@ -435,10 +435,9 @@ const SYS_BADGES=[
   {id:'hidden_perfect',name:'完美主义',icon:'🔮',desc:'解锁所有徽章',hidden:true,badges:25,condition:'???'},
 ];
 
-// ==================== DATA (localStorage + Gist + BroadcastChannel) ====================
+// ==================== DATA (localStorage + kvdb + BroadcastChannel) ====================
 const ud=loadData();
-const GIST_ID='109d1f31f3df40aedf18db7e154cb76c';
-const GIST_TOKEN='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';
+const KVDB_BUCKET='QwkS7dezLGzSo8Q8fHQQZF';
 const LS_KEY='xcj_userC_v1';
 const BC=new BroadcastChannel('xcj_sync_C');
 let _saveTimer=null;
@@ -451,23 +450,19 @@ function loadData(){
   try{const raw=localStorage.getItem(LS_KEY);if(raw){const d=JSON.parse(raw);if(d&&Array.isArray(d.tasks))return mergeData(d)}}catch(e){}
   return defaultData();
 }
-function gistUrl(){return'https://api.github.com/gists/'+GIST_ID}
-function gistHeaders(){return{'Authorization':'token '+GIST_TOKEN,'Content-Type':'application/json','Accept':'application/vnd.github.v3+json'}}
-async function gistSave(json){
-  try{
-    await fetch(gistUrl(),{method:'PATCH',headers:gistHeaders(),body:JSON.stringify({"files":{"data.json":{"content":json}}})});
-  }catch(e){}
+async function kvSave(json){
+  try{await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data',{method:'POST',headers:{'Content-Type':'application/json'},body:json})}catch(e){}
 }
 function saveData(){
   const json=JSON.stringify(ud);
   try{localStorage.setItem(LS_KEY,json)}catch(e){}
   BC.postMessage(json);
   clearTimeout(_saveTimer);
-  _saveTimer=setTimeout(()=>gistSave(json),300);
+  _saveTimer=setTimeout(()=>kvSave(json),300);
 }
 window.addEventListener('beforeunload',()=>{
   clearTimeout(_saveTimer);
-  gistSave(JSON.stringify(ud));
+  kvSave(JSON.stringify(ud));
 });
 BC.onmessage=e=>{
   try{
@@ -1094,13 +1089,12 @@ document.addEventListener('DOMContentLoaded',async()=>{
   const sb=document.querySelector('.desktop-only nav');
   if(sb){const wrap=document.createElement('div');wrap.innerHTML=deskInputHtml;sb.insertBefore(wrap.firstChild,sb.firstChild)}
   genRoutineTasks();renderAll();renderDock();setView('today');
-  // Load from Gist (override local if cloud has newer data)
+  // Load from kvdb (override local if cloud has newer data)
   try{
-    const r=await fetch(gistUrl(),{headers:gistHeaders()});
+    const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
     if(r.ok){
-      const g=await r.json();
-      const raw=g.files&&g.files['data.json']&&g.files['data.json'].content;
-      if(raw){const d=JSON.parse(raw);if(d&&Array.isArray(d.tasks)){ud=mergeData(d);applyTheme(ud.theme||'purple');try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}renderAll();renderDock()}}
+      const d=await r.json();
+      if(d&&Array.isArray(d.tasks)){ud=mergeData(d);applyTheme(ud.theme||'purple');try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}renderAll();renderDock()}
     }
   }catch(e){}
 });
