@@ -42,7 +42,7 @@ input,select,textarea{font-family:inherit;outline:none;border:none}
     <div class="flex items-center gap-2">
       <button onclick="showProfile()" class="flex items-center gap-1.5 bg-[#18181B] px-2 py-1 rounded-lg">
         <span id="mobAvatar" class="text-base"></span>
-        <span id="mobName" class="text-[11px] text-gray-400 font-medium max-w-[60px] truncate"></span><span id="_syncDot" style="display:none" onclick="manualSync()" title="点击手动同步"></span>
+        <span id="mobName" class="text-[11px] text-gray-400 font-medium max-w-[60px] truncate"></span><span id="_syncDot" style="display:none" onclick="manualSync()" title="点击手动同步"></span><span id="_syncStatus" class="text-[9px] ml-1" style="color:#666"></span>
       </button>
       <div class="flex items-center gap-1 bg-[#18181B] px-2 py-1 rounded-lg">
         <span class="text-[10px] text-gray-500">Lv.</span><span id="mobLv" class="text-xs font-bold" style="color:var(--ac)">1</span>
@@ -507,16 +507,20 @@ async function kvUpload(){
     try{
       const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
       if(r.ok){const d=await r.json();if(d&&Array.isArray(d.tasks))cloud=d}
-    }catch(e){}
+    }catch(e){_showSync('fail','读取云端失败');_uploading=false;return}
     // Step 2: Merge local + cloud
     const toSave=cloud?smartMerge(ud,cloud):{...ud,_t:Date.now()};
     toSave._t=Date.now();
     const json=JSON.stringify(toSave);
     // Step 3: Write merged result
     const r2=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data',{method:'POST',headers:{'Content-Type':'application/json'},body:json});
-    if(r2.ok){ud=smartMerge(ud,toSave)}
-    _showSync(r2.ok?'ok':'fail');
-  }catch(e){_showSync('fail')}
+    if(r2.ok){
+      ud=smartMerge(ud,toSave);
+      _showSync('ok','↑上传成功 '+toSave.tasks.length+'个任务');
+    }else{
+      _showSync('fail','↑上传失败 HTTP'+r2.status);
+    }
+  }catch(e){_showSync('fail','↑上传错误')}
   _uploading=false;
 }
 // Read cloud → merge with local → update UI
@@ -533,16 +537,20 @@ async function kvDownload(){
       applyTheme(ud.theme||'purple');
       try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}
       renderAll();renderDock();
+      _showSync('ok','↓下载更新 '+ud.tasks.length+'个任务');
     }
   }catch(e){}
 }
-function _showSync(status){
+function _showSync(status,msg){
   const d=document.getElementById('_syncDot');
-  if(!d)return;
-  d.style.display='inline-block';d.style.width='8px';d.style.height='8px';d.style.borderRadius='50%';d.style.marginLeft='6px';
-  d.style.background=status==='ok'?'#22C55E':'#EF4444';
-  d.title=status==='ok'?'已同步':'同步失败(点击重试)';
-  if(status==='ok')setTimeout(()=>{if(d)d.style.display='none'},2000);
+  const s=document.getElementById('_syncStatus');
+  if(d){
+    d.style.display='inline-block';d.style.width='8px';d.style.height='8px';d.style.borderRadius='50%';d.style.marginLeft='6px';
+    d.style.background=status==='ok'?'#22C55E':'#EF4444';
+    d.title=status==='ok'?'已同步':'同步失败(点击重试)';
+    if(status==='ok')setTimeout(()=>{if(d)d.style.display='none'},3000);
+  }
+  if(s)s.textContent=msg||'';
 }
 async function manualSync(){
   const dot=document.getElementById('_syncDot');
