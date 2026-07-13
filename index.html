@@ -458,6 +458,11 @@ async function kvUpload(){
   if(_uploading)return;
   _uploading=true;
   try{
+    // Read cloud first to get latest _ver, avoid overwriting newer data
+    try{
+      const cr=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
+      if(cr.ok){const cd=await cr.json();if(cd&&cd._ver!==undefined&&cd._ver>_lastCloudVer)_lastCloudVer=cd._ver}
+    }catch(e){}
     _lastCloudVer++;
     const toSave={...ud,_ver:_lastCloudVer};
     const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(toSave)});
