@@ -42,7 +42,7 @@ input,select,textarea{font-family:inherit;outline:none;border:none}
     <div class="flex items-center gap-2">
       <button onclick="showProfile()" class="flex items-center gap-1.5 bg-[#18181B] px-2 py-1 rounded-lg">
         <span id="mobAvatar" class="text-base"></span>
-        <span id="mobName" class="text-[11px] text-gray-400 font-medium max-w-[60px] truncate"></span><span id="_syncDot" style="display:none"></span>
+        <span id="mobName" class="text-[11px] text-gray-400 font-medium max-w-[60px] truncate"></span><span id="_syncDot" style="display:none" onclick="manualSync()" title="点击手动同步"></span>
       </button>
       <div class="flex items-center gap-1 bg-[#18181B] px-2 py-1 rounded-lg">
         <span class="text-[10px] text-gray-500">Lv.</span><span id="mobLv" class="text-xs font-bold" style="color:var(--ac)">1</span>
@@ -436,13 +436,14 @@ const SYS_BADGES=[
 ];
 
 // ==================== DATA (localStorage + kvdb + BroadcastChannel) ====================
+// Sync strategy: Merge, never overwrite. Tasks merge by id, xp takes max.
 let ud=loadData();
 const KVDB_BUCKET='6motzc9fYAADYrSLwYtqKQ';
 const LS_KEY='xcj_userA_v1';
 const BC=new BroadcastChannel('xcj_sync_A');
 let _saveTimer=null;
 let _cloudTime=0;
-let _pollTimer=null;
+let _myLastUpload=0;  // Track when WE last uploaded
 function defaultData(){return{tasks:[],xp:0,totalCompleted:0,streak:0,maxStreak:0,badges:[],customBadges:[],dailyLog:{},lastActive:null,profile:{name:'我',avatar:'🐱'},dock:['today','calendar','history','badges','goals'],routines:[],goals:[],goalLogs:{},lastRoutineGen:null,theme:'purple',createdAt:new Date().toISOString().split('T')[0],_v:3}}
 function mergeData(d){
   const def=defaultData();
@@ -452,14 +453,46 @@ function loadData(){
   try{const raw=localStorage.getItem(LS_KEY);if(raw){const d=JSON.parse(raw);if(d&&Array.isArray(d.tasks))return mergeData(d)}}catch(e){}
   return defaultData();
 }
-function _isDefault(d){
-  return d.tasks.length===0&&d.xp===0&&d.totalCompleted===0&&d.streak===0&&d.maxStreak===0&&d.badges.length===0&&d.customBadges.length===0&&d.lastActive===null&&d.profile.name==='我'&&d.goals.length===0&&d.routines.length===0;
+// Smart merge: combine local and cloud data without losing anything
+function smartMerge(cloud){
+  const local=ud;
+  // Tasks: merge by id, keep the version with more recent completedAt or createdAt
+  const taskMap=new Map();
+  (local.tasks||[]).forEach(t=>taskMap.set(String(t.id),t));
+  (cloud.tasks||[]).forEach(t=>{
+    const existing=taskMap.get(String(t.id));
+    if(!existing){taskMap.set(String(t.id),t)}
+    else{
+      // If cloud version is completed but local isn't, use cloud
+      // If local version is completed but cloud isn't, keep local
+      if(t.completed&&!existing.completed){taskMap.set(String(t.id),t)}
+      // Otherwise keep local (already there)
+    }
+  });
+  // Numeric fields: take max of both
+  const merged={
+    ...local,
+    tasks:Array.from(taskMap.values()),
+    xp:Math.max(local.xp||0,cloud.xp||0),
+    totalCompleted:Math.max(local.totalCompleted||0,cloud.totalCompleted||0),
+    streak:Math.max(local.streak||0,cloud.streak||0),
+    maxStreak:Math.max(local.maxStreak||0,cloud.maxStreak||0),
+    badges:[...new Set([...(local.badges||[]),...(cloud.badges||[])])],
+    customBadges:[...new Set([...(local.customBadges||[]),...(cloud.customBadges||[])])],
+    routines:[...new Set([...(local.routines||[]),...(cloud.routines||[])])],
+    goals:[...new Set([...(local.goals||[]),...(cloud.goals||[])])],
+    dailyLog:{...local.dailyLog,...cloud.dailyLog},
+    goalLogs:{...local.goalLogs,...cloud.goalLogs},
+  };
+  // Profile: use whichever was updated more recently
+  if(cloud.profile&&(cloud.profile.name!==merged.profile.name||cloud.profile.avatar!==merged.profile.avatar)){
+    if((cloud._t||0)>(local._t||0)){merged.profile={...local.profile,...cloud.profile}}
+  }
+  return merged;
 }
-async function kvSave(){
-  if(_isDefault(ud))return;
+async function kvUpload(){
   const payload={...ud,_t:Date.now()};
-  // Skip if cloud already has this or newer data
-  if(payload._t<=_cloudTime&&_cloudTime>0)return;
+  _myLastUpload=payload._t;
   const json=JSON.stringify(payload);
   try{
     const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data',{method:'POST',headers:{'Content-Type':'application/json'},body:json});
@@ -467,40 +500,52 @@ async function kvSave(){
     _showSync(r.ok?'ok':'fail');
   }catch(e){_showSync('fail')}
 }
+async function kvDownload(){
+  try{
+    const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
+    if(!r.ok)return false;
+    const d=await r.json();
+    if(!d||!Array.isArray(d.tasks))return false;
+    // Skip if we already saw this exact version
+    if(d._t&&d._t<=_cloudTime)return false;
+    // Skip if this is data we just uploaded ourselves
+    if(d._t&&d._t===_myLastUpload)return false;
+    const before=JSON.stringify(ud.tasks.map(t=>t.id+t.completed));
+    ud=smartMerge(d);
+    _cloudTime=d._t||Date.now();
+    applyTheme(ud.theme||'purple');
+    try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}
+    const after=JSON.stringify(ud.tasks.map(t=>t.id+t.completed));
+    if(before!==after){renderAll();renderDock();return true}
+  }catch(e){}
+  return false;
+}
 function _showSync(status){
   const d=document.getElementById('_syncDot');
   if(!d)return;
   d.style.display='inline-block';d.style.width='8px';d.style.height='8px';d.style.borderRadius='50%';d.style.marginLeft='6px';
   d.style.background=status==='ok'?'#22C55E':'#EF4444';
-  d.title=status==='ok'?'已同步':'同步失败';
+  d.title=status==='ok'?'已同步':'同步失败(点击重试)';
   if(status==='ok')setTimeout(()=>{if(d)d.style.display='none'},2000);
+}
+async function manualSync(){
+  const dot=document.getElementById('_syncDot');
+  if(dot){dot.style.display='inline-block';dot.style.background='#FACC15';dot.title='同步中...';dot.style.width='8px';dot.style.height='8px';dot.style.borderRadius='50%';dot.style.marginLeft='6px'}
+  await kvUpload();
+  await kvDownload();
+  if(!document.getElementById('_syncDot').style.background.includes('EF4444'))_showSync('ok');
 }
 function saveData(){
   const json=JSON.stringify(ud);
   try{localStorage.setItem(LS_KEY,json)}catch(e){}
   BC.postMessage(json);
   clearTimeout(_saveTimer);
-  _saveTimer=setTimeout(kvSave,200);
+  _saveTimer=setTimeout(kvUpload,200);
 }
-async function kvPoll(){
-  if(document.hidden)return;
-  try{
-    const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
-    if(!r.ok)return;
-    const d=await r.json();
-    if(!d||!Array.isArray(d.tasks))return;
-    // Use timestamp comparison, not JSON string comparison (order may differ)
-    if(d._t&&d._t>_cloudTime){
-      ud=mergeData(d);_cloudTime=d._t;
-      applyTheme(ud.theme||'purple');
-      try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}
-      renderAll();renderDock();
-    }
-  }catch(e){}
-}
-_pollTimer=setInterval(kvPoll,3000);
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')kvPoll()});
-window.addEventListener('beforeunload',()=>{clearTimeout(_saveTimer);if(!_isDefault(ud))kvSave()});
+// Poll every 2s for faster cross-device sync
+setInterval(kvDownload,2000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')kvDownload()});
+window.addEventListener('beforeunload',()=>{clearTimeout(_saveTimer);kvUpload()});
 BC.onmessage=e=>{try{const d=JSON.parse(e.data);if(d&&Array.isArray(d.tasks)){ud=mergeData(d);applyTheme(ud.theme||'purple');try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}renderAll();renderDock()}}catch(e){}};
 
 function today(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
@@ -1125,21 +1170,9 @@ document.addEventListener('DOMContentLoaded',async()=>{
   if(sb){const wrap=document.createElement('div');wrap.innerHTML=deskInputHtml;sb.insertBefore(wrap.firstChild,sb.firstChild)}
   // Render UI with local data first (fast initial paint)
   renderAll();renderDock();setView('today');
-  // Load from kvdb BEFORE generating routines
-  try{
-    const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
-    if(r.ok){
-      const d=await r.json();
-      if(d&&Array.isArray(d.tasks)){
-        ud=mergeData(d);
-        if(d._t)_cloudTime=d._t;
-        applyTheme(ud.theme||'purple');
-        try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}
-        renderAll();renderDock();_showSync('ok');
-      }
-    }
-  }catch(e){}
-  // Now generate routine tasks based on the latest data
+  // Load from kvdb (Last-Write-Wins: cloud data overwrites local)
+  await kvDownload();
+  // Now generate routine tasks based on latest data
   genRoutineTasks();
 });
 // Fallback: if DOMContentLoaded already fired, re-render on window load
