@@ -79,7 +79,7 @@ async function kvUpload(){
     // Read cloud to get latest _ver and merge
     let cloudVer=0;
     try{
-      const cr=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
+      const cr=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data?_='+Date.now());
       if(cr.ok){const cd=await cr.json();if(cd&&Array.isArray(cd.tasks)){
         // Merge: if cloud has newer data, incorporate it
         if(cd._ver!==undefined&&cd._ver>_lastCloudVer){
@@ -117,7 +117,7 @@ async function kvUpload(){
 }
 async function kvDownload(){
   try{
-    const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
+    const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data?_='+Date.now());
     if(!r.ok)return;
     const cloud=await r.json();
     if(!cloud||!Array.isArray(cloud.tasks))return;
