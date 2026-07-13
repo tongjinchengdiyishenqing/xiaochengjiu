@@ -67,7 +67,9 @@ const BC=new BroadcastChannel('xcj_sync_'+location.pathname.split('/').pop().rep
 let _saveTimer=null;
 let _uploading=false;
 let _lastCloudVer=0;
-function defaultData(){return{tasks:[],xp:0,totalCompleted:0,streak:0,maxStreak:0,badges:[],customBadges:[],dailyLog:{},lastActive:null,profile:{name:'我',avatar:'🐱'},dock:['today','calendar','history','badges','goals'],routines:[],goals:[],goalLogs:{},lastRoutineGen:null,theme:'purple',createdAt:new Date().toISOString().split('T')[0],_v:3}}
+function today(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function today_fmt(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function defaultData(){return{tasks:[],xp:0,totalCompleted:0,streak:0,maxStreak:0,badges:[],customBadges:[],dailyLog:{},lastActive:null,profile:{name:'我',avatar:'🐱'},dock:['today','calendar','history','badges','goals'],routines:[],goals:[],goalLogs:{},lastRoutineGen:null,theme:'purple',createdAt:today(),_v:3}}
 function mergeData(d){
   const def=defaultData();
   return{...def,...d,profile:{...def.profile,...(d.profile||{})},dock:d.dock||def.dock,routines:d.routines||[],goals:d.goals||[],goalLogs:d.goalLogs||{},lastRoutineGen:d.lastRoutineGen||null,theme:d.theme||'purple',_v:3};
@@ -400,7 +402,7 @@ function renderStats(){
   let html='';
   for(let i=6;i>=0;i--){
     const d=new Date();d.setDate(d.getDate()-i);
-    const key=d.toISOString().split('T')[0],log=ud.dailyLog[key],count=log?log.completed:0;
+    const key=today_fmt(d),log=ud.dailyLog[key],count=log?log.completed:0;
     const h=Math.max(4,count*8),isToday=i===0;
     html+='<div class="flex-1 flex flex-col items-center gap-1"><span class="text-[10px] text-gray-400">'+count+'</span><div class="w-full rounded-sm '+(isToday?'bg-[#8B5CF6]':'bg-[#3F3F46]')+'" style="height:'+h+'px"></div><span class="text-[10px] text-gray-500">'+days[d.getDay()]+'</span></div>';
   }
@@ -656,7 +658,7 @@ function confirmCat(cat){
     if(start&&end){
       const s=new Date(start),e=new Date(end);
       for(let d=new Date(s);d<=e;d.setDate(d.getDate()+1)){
-        const ds=d.toISOString().split('T')[0];
+        const ds=today_fmt(d);
         const exists=ud.tasks.some(t=>t.createdAt===ds&&t.title===pendingTitle.trim());
         if(!exists){
           ud.tasks.push({id:Date.now()+Math.random(),title:pendingTitle.trim(),category:cat,time:time||'',priority:pri||'mid',completed:false,createdAt:ds,completedAt:null,linkedGoal:null});
