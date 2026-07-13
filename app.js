@@ -84,8 +84,8 @@ async function kvUpload(){
     if(r.ok){
       _lastCloudVer=toSave._ver;
       _showSync('ok','↑ '+toSave.tasks.length+'任务');
-    }else{_showSync('fail','↑失败')}
-  }catch(e){_showSync('fail','↑网络错误')}
+    }else{_showSync('fail','↑失败 HTTP'+r.status)}
+  }catch(e){_showSync('fail','↑错误: '+e.message)}
   _uploading=false;
 }
 async function kvDownload(){
