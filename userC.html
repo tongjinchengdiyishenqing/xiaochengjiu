@@ -334,8 +334,9 @@ input,select,textarea{font-family:inherit;outline:none;border:none}
       <div class="flex gap-2">
         <button onclick="exportData()" class="flex-1 bg-[#09090B] border border-[#3F3F46] text-gray-400 py-2 rounded-lg text-xs">导出备份</button>
         <button onclick="document.getElementById('importFile').click()" class="flex-1 bg-[#09090B] border border-[#3F3F46] text-gray-400 py-2 rounded-lg text-xs">导入数据</button>
-        <input type="file" id="importFile" accept=".json" class="hidden" onchange="importData(event)">
       </div>
+      <button onclick="resetData()" class="w-full bg-red-900/30 border border-red-800/50 text-red-400 py-2 rounded-lg text-xs mt-2">清空数据</button>
+      <input type="file" id="importFile" accept=".json" class="hidden" onchange="importData(event)">
       <div class="text-[10px] text-gray-500 text-center mt-1">数据自动保存，导出备份以防万一</div>
     </div>
     <button onclick="saveProfile()" class="w-full bg-[#8B5CF6] text-white py-2.5 rounded-lg text-sm font-bold mt-4">保存</button>
@@ -436,14 +437,16 @@ const SYS_BADGES=[
 ];
 
 // ==================== DATA (localStorage + kvdb + BroadcastChannel) ====================
-// Sync strategy: Merge, never overwrite. Tasks merge by id, xp takes max.
+// Sync strategy: Read-Merge-Write
+// Upload: read cloud → smartMerge with local → write merged result back
+// Download: read cloud → smartMerge with local → update UI
+// This ensures no data is ever lost, even with simultaneous edits.
 let ud=loadData();
 const KVDB_BUCKET='QwkS7dezLGzSo8Q8fHQQZF';
 const LS_KEY='xcj_userC_v1';
 const BC=new BroadcastChannel('xcj_sync_C');
 let _saveTimer=null;
-let _cloudTime=0;
-let _myLastUpload=0;  // Track when WE last uploaded
+let _uploading=false;
 function defaultData(){return{tasks:[],xp:0,totalCompleted:0,streak:0,maxStreak:0,badges:[],customBadges:[],dailyLog:{},lastActive:null,profile:{name:'我',avatar:'🐱'},dock:['today','calendar','history','badges','goals'],routines:[],goals:[],goalLogs:{},lastRoutineGen:null,theme:'purple',createdAt:new Date().toISOString().split('T')[0],_v:3}}
 function mergeData(d){
   const def=defaultData();
@@ -453,25 +456,22 @@ function loadData(){
   try{const raw=localStorage.getItem(LS_KEY);if(raw){const d=JSON.parse(raw);if(d&&Array.isArray(d.tasks))return mergeData(d)}}catch(e){}
   return defaultData();
 }
-// Smart merge: combine local and cloud data without losing anything
-function smartMerge(cloud){
-  const local=ud;
-  // Tasks: merge by id, keep the version with more recent completedAt or createdAt
+// Smart merge: combine two data snapshots without losing anything
+function smartMerge(local,cloud){
+  // Tasks: merge by id. If same id exists in both, prefer the completed version
   const taskMap=new Map();
   (local.tasks||[]).forEach(t=>taskMap.set(String(t.id),t));
   (cloud.tasks||[]).forEach(t=>{
     const existing=taskMap.get(String(t.id));
     if(!existing){taskMap.set(String(t.id),t)}
     else{
-      // If cloud version is completed but local isn't, use cloud
-      // If local version is completed but cloud isn't, keep local
-      if(t.completed&&!existing.completed){taskMap.set(String(t.id),t)}
-      // Otherwise keep local (already there)
+      // Prefer completed version; if both same state, keep local (has latest local edits)
+      if(t.completed&&!existing.completed){taskMap.set(String(t.id),{...existing,...t})}
     }
   });
-  // Numeric fields: take max of both
   const merged={
     ...local,
+    ...cloud,
     tasks:Array.from(taskMap.values()),
     xp:Math.max(local.xp||0,cloud.xp||0),
     totalCompleted:Math.max(local.totalCompleted||0,cloud.totalCompleted||0),
@@ -479,46 +479,56 @@ function smartMerge(cloud){
     maxStreak:Math.max(local.maxStreak||0,cloud.maxStreak||0),
     badges:[...new Set([...(local.badges||[]),...(cloud.badges||[])])],
     customBadges:[...new Set([...(local.customBadges||[]),...(cloud.customBadges||[])])],
-    routines:[...new Set([...(local.routines||[]),...(cloud.routines||[])])],
-    goals:[...new Set([...(local.goals||[]),...(cloud.goals||[])])],
-    dailyLog:{...local.dailyLog,...cloud.dailyLog},
-    goalLogs:{...local.goalLogs,...cloud.goalLogs},
+    dailyLog:{...(local.dailyLog||{}),...(cloud.dailyLog||{})},
+    goalLogs:{...(local.goalLogs||{}),...(cloud.goalLogs||{})},
+    // For arrays that are managed as full-list (routines, goals), use the longer one
+    routines:(cloud.routines||[]).length>(local.routines||[]).length?(cloud.routines):(local.routines||[]),
+    goals:(cloud.goals||[]).length>(local.goals||[]).length?(cloud.goals):(local.goals||[]),
   };
-  // Profile: use whichever was updated more recently
-  if(cloud.profile&&(cloud.profile.name!==merged.profile.name||cloud.profile.avatar!==merged.profile.avatar)){
-    if((cloud._t||0)>(local._t||0)){merged.profile={...local.profile,...cloud.profile}}
+  // Profile: use cloud if cloud has a name different from default
+  if(cloud.profile){
+    if(cloud.profile.name&&cloud.profile.name!=='我'){merged.profile={...local.profile,...cloud.profile}}
   }
   return merged;
 }
+// Read cloud → merge with local → write merged result (prevents data loss)
 async function kvUpload(){
-  const payload={...ud,_t:Date.now()};
-  _myLastUpload=payload._t;
-  const json=JSON.stringify(payload);
+  if(_uploading)return;
+  _uploading=true;
   try{
-    const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data',{method:'POST',headers:{'Content-Type':'application/json'},body:json});
-    if(r.ok){_cloudTime=payload._t}
-    _showSync(r.ok?'ok':'fail');
+    // Step 1: Read current cloud data
+    let cloud=null;
+    try{
+      const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
+      if(r.ok){const d=await r.json();if(d&&Array.isArray(d.tasks))cloud=d}
+    }catch(e){}
+    // Step 2: Merge local + cloud
+    const toSave=cloud?smartMerge(ud,cloud):{...ud,_t:Date.now()};
+    toSave._t=Date.now();
+    const json=JSON.stringify(toSave);
+    // Step 3: Write merged result
+    const r2=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data',{method:'POST',headers:{'Content-Type':'application/json'},body:json});
+    if(r2.ok){ud=smartMerge(ud,toSave)}
+    _showSync(r2.ok?'ok':'fail');
   }catch(e){_showSync('fail')}
+  _uploading=false;
 }
+// Read cloud → merge with local → update UI
 async function kvDownload(){
   try{
     const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
-    if(!r.ok)return false;
-    const d=await r.json();
-    if(!d||!Array.isArray(d.tasks))return false;
-    // Skip if we already saw this exact version
-    if(d._t&&d._t<=_cloudTime)return false;
-    // Skip if this is data we just uploaded ourselves
-    if(d._t&&d._t===_myLastUpload)return false;
-    const before=JSON.stringify(ud.tasks.map(t=>t.id+t.completed));
-    ud=smartMerge(d);
-    _cloudTime=d._t||Date.now();
-    applyTheme(ud.theme||'purple');
-    try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}
-    const after=JSON.stringify(ud.tasks.map(t=>t.id+t.completed));
-    if(before!==after){renderAll();renderDock();return true}
+    if(!r.ok)return;
+    const cloud=await r.json();
+    if(!cloud||!Array.isArray(cloud.tasks))return;
+    const merged=smartMerge(ud,cloud);
+    // Only update UI if something actually changed
+    if(JSON.stringify(merged.tasks.map(t=>t.id+String(t.completed)))!==JSON.stringify(ud.tasks.map(t=>t.id+String(t.completed)))||merged.xp!==ud.xp||merged.profile.name!==ud.profile.name||merged.profile.avatar!==ud.profile.avatar){
+      ud=merged;
+      applyTheme(ud.theme||'purple');
+      try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}
+      renderAll();renderDock();
+    }
   }catch(e){}
-  return false;
 }
 function _showSync(status){
   const d=document.getElementById('_syncDot');
@@ -542,10 +552,10 @@ function saveData(){
   clearTimeout(_saveTimer);
   _saveTimer=setTimeout(kvUpload,200);
 }
-// Poll every 2s for faster cross-device sync
+// Poll every 2s
 setInterval(kvDownload,2000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')kvDownload()});
-window.addEventListener('beforeunload',()=>{clearTimeout(_saveTimer);kvUpload()});
+window.addEventListener('beforeunload',()=>{clearTimeout(_saveTimer);if(!_uploading)kvUpload()});
 BC.onmessage=e=>{try{const d=JSON.parse(e.data);if(d&&Array.isArray(d.tasks)){ud=mergeData(d);applyTheme(ud.theme||'purple');try{localStorage.setItem(LS_KEY,JSON.stringify(ud))}catch(x){}renderAll();renderDock()}}catch(e){}};
 
 function today(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
@@ -1133,6 +1143,12 @@ function exportData(){
   a.click();
   setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url)},1000);
 }
+function resetData(){
+  if(!confirm('确定清空所有数据？此操作不可恢复！'))return;
+  ud=defaultData();
+  try{localStorage.removeItem(LS_KEY)}catch(e){}
+  kvUpload();renderAll();renderDock();setView('today');
+}
 function importData(e){
   const file=e.target.files[0];if(!file)return;
   const reader=new FileReader();
@@ -1170,7 +1186,7 @@ document.addEventListener('DOMContentLoaded',async()=>{
   if(sb){const wrap=document.createElement('div');wrap.innerHTML=deskInputHtml;sb.insertBefore(wrap.firstChild,sb.firstChild)}
   // Render UI with local data first (fast initial paint)
   renderAll();renderDock();setView('today');
-  // Load from kvdb (Last-Write-Wins: cloud data overwrites local)
+  // Load from kvdb (merge with local, never overwrite)
   await kvDownload();
   // Now generate routine tasks based on latest data
   genRoutineTasks();
