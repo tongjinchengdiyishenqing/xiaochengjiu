@@ -96,7 +96,7 @@ async function kvDownload(){
     if(!cloud||!Array.isArray(cloud.tasks))return;
     if(cloud._ver!==undefined&&cloud._ver<=_lastCloudVer)return;
     ud=mergeData(cloud);
-    _lastCloudVer=cloud._ver||0;
+    _lastCloudVer=Math.max(cloud._ver||0,Date.now());
     applyTheme(ud.theme||'purple');
     renderAll();renderDock();
     _showSync('ok','↓ '+ud.tasks.length+'任务');
