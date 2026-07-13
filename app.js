@@ -76,41 +76,12 @@ async function kvUpload(){
   if(_uploading)return;
   _uploading=true;
   try{
-    // Read cloud to get latest _ver and merge
-    let cloudVer=0;
-    try{
-      const cr=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data?_='+Date.now());
-      if(cr.ok){const cd=await cr.json();if(cd&&Array.isArray(cd.tasks)){
-        // Merge: if cloud has newer data, incorporate it
-        if(cd._ver!==undefined&&cd._ver>_lastCloudVer){
-          // Merge tasks by id - combine both local and cloud tasks
-          const taskMap=new Map();
-          ud.tasks.forEach(t=>taskMap.set(String(t.id),t));
-          cd.tasks.forEach(t=>{
-            const ex=taskMap.get(String(t.id));
-            if(!ex)taskMap.set(String(t.id),t);
-            else if(t.completed&&!ex.completed)taskMap.set(String(t.id),{...ex,...t});
-          });
-          ud.tasks=Array.from(taskMap.values());
-          ud.xp=Math.max(ud.xp,cd.xp||0);
-          ud.totalCompleted=Math.max(ud.totalCompleted,cd.totalCompleted||0);
-          ud.streak=Math.max(ud.streak,cd.streak||0);
-          ud.maxStreak=Math.max(ud.maxStreak,cd.maxStreak||0);
-          if(cd.profile&&cd.profile.name!=='我')ud.profile={...ud.profile,...cd.profile};
-          ud.badges=[...new Set([...(ud.badges||[]),...(cd.badges||[])])];
-          ud.customBadges=[...new Set([...(ud.customBadges||[]),...(cd.customBadges||[])])];
-          ud.dailyLog={...(ud.dailyLog||{}),...(cd.dailyLog||{})};
-        }
-        cloudVer=cd._ver||0;
-      }}
-    }catch(e){}
-    _lastCloudVer=Math.max(_lastCloudVer,cloudVer)+1;
-    const toSave={...ud,_ver:_lastCloudVer};
+    // Simple: just write local data. No merge. Last write wins.
+    const toSave={...ud,_ver:Date.now()};
     const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(toSave)});
     if(r.ok){
+      _lastCloudVer=toSave._ver;
       _showSync('ok','↑ '+toSave.tasks.length+'任务');
-      // Immediately download to catch any concurrent changes
-      setTimeout(kvDownload,500);
     }else{_showSync('fail','↑失败')}
   }catch(e){_showSync('fail','↑网络错误')}
   _uploading=false;
