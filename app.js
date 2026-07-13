@@ -1,6 +1,6 @@
 // ==================== CONSTANTS ====================
 // Read bucket from HTML data attribute, fallback to default
-const KVDB_BUCKET=document.currentScript.dataset.bucket||'6motzc9fYAADYrSLwYtqKQ';
+const KVDB_BUCKET=typeof KVB!=='undefined'?KVB:(document.currentScript.dataset.bucket||'6motzc9fYAADYrSLwYtqKQ');
 const THEMES=[
   {id:'purple',name:'暗夜紫',preview:'linear-gradient(135deg,#8B5CF6,#6D28D9)',css:{'--bg':'#09090B','--bg1':'#18181B','--bg2':'#27272A','--bg3':'#3F3F46','--ink1':'#FAFAFA','--ink2':'#A1A1AA','--ink3':'#71717A','--ac':'#8B5CF6','--ac2':'#6D28D9','--ac3':'#A78BFA'}},
   {id:'ocean',name:'深海蓝',preview:'linear-gradient(135deg,#0EA5E9,#0369A1)',css:{'--bg':'#020617','--bg1':'#0F172A','--bg2':'#1E3A5F','--bg3':'#334155','--ink1':'#F0F9FF','--ink2':'#7DD3FC','--ink3':'#38BDF8','--ac':'#0EA5E9','--ac2':'#0369A1','--ac3':'#38BDF8'}},
