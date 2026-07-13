@@ -457,7 +457,15 @@ function loadData(){
   return defaultData();
 }
 // Smart merge: combine two data snapshots without losing anything
+// But: if one side is default/empty and the other has real data, prefer the real data
 function smartMerge(local,cloud){
+  const cloudIsEmpty=cloud.tasks.length===0&&cloud.xp===0&&(!cloud.profile||cloud.profile.name==='我')&&(!cloud._t);
+  const localIsEmpty=local.tasks.length===0&&local.xp===0&&(!local.profile||local.profile.name==='我');
+  // If cloud is empty/default, just return local (don't let empty cloud overwrite real data)
+  if(cloudIsEmpty)return{...local,_t:local._t||Date.now()};
+  // If local is empty/default, return cloud (fresh load)
+  if(localIsEmpty)return{...cloud,_t:cloud._t||Date.now()};
+  // Both have real data: merge them
   // Tasks: merge by id. If same id exists in both, prefer the completed version
   const taskMap=new Map();
   (local.tasks||[]).forEach(t=>taskMap.set(String(t.id),t));
@@ -465,7 +473,6 @@ function smartMerge(local,cloud){
     const existing=taskMap.get(String(t.id));
     if(!existing){taskMap.set(String(t.id),t)}
     else{
-      // Prefer completed version; if both same state, keep local (has latest local edits)
       if(t.completed&&!existing.completed){taskMap.set(String(t.id),{...existing,...t})}
     }
   });
@@ -481,7 +488,6 @@ function smartMerge(local,cloud){
     customBadges:[...new Set([...(local.customBadges||[]),...(cloud.customBadges||[])])],
     dailyLog:{...(local.dailyLog||{}),...(cloud.dailyLog||{})},
     goalLogs:{...(local.goalLogs||{}),...(cloud.goalLogs||{})},
-    // For arrays that are managed as full-list (routines, goals), use the longer one
     routines:(cloud.routines||[]).length>(local.routines||[]).length?(cloud.routines):(local.routines||[]),
     goals:(cloud.goals||[]).length>(local.goals||[]).length?(cloud.goals):(local.goals||[]),
   };
@@ -1147,7 +1153,10 @@ function resetData(){
   if(!confirm('确定清空所有数据？此操作不可恢复！'))return;
   ud=defaultData();
   try{localStorage.removeItem(LS_KEY)}catch(e){}
-  kvUpload();renderAll();renderDock();setView('today');
+  // Also clear cloud data
+  const empty={...defaultData(),_t:Date.now()};
+  fetch('https://kvdb.io/'+KVDB_BUCKET+'/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(empty)}).catch(()=>{});
+  renderAll();renderDock();setView('today');
 }
 function importData(e){
   const file=e.target.files[0];if(!file)return;
