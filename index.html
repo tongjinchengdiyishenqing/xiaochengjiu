@@ -399,7 +399,7 @@ const CATS=[
   {id:'finance',label:'理财',icon:'💰',c:'#14B8A6'},
   {id:'read',label:'阅读',icon:'📚',c:'#6366F1'},
 ];
-const LEVELS=[0,50,117,208,331,497,721,1023,1431,1982,2726,3730,5086,6917,9388,12774,17345,23517,31848,43100];
+const LEVELS=[0,100,233,416,662,994,1442,2046,2862,3964,5452,7460,10172,13834,18776,25548,34690,47034,63696,86200];
 function lvStartXp(lv){if(lv<=1)return 0;if(lv<=LEVELS.length)return LEVELS[lv-1];const lastGap=LEVELS[LEVELS.length-1]-LEVELS[LEVELS.length-2];let xp=LEVELS[LEVELS.length-1];for(let i=LEVELS.length+1;i<=lv;i++)xp+=Math.round(lastGap*Math.pow(1.35,i-LEVELS.length));return xp}
 function lvEndXp(lv){return lvStartXp(lv+1)}
 function getLv(xp){for(let i=LEVELS.length-1;i>=0;i--)if(xp>=LEVELS[i])return i+1;let lv=LEVELS.length+1;while(lvEndXp(lv-1)<=xp)lv++;return lv}
@@ -502,25 +502,15 @@ async function kvUpload(){
   if(_uploading)return;
   _uploading=true;
   try{
-    // Step 1: Read current cloud data
-    let cloud=null;
-    try{
-      const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
-      if(r.ok){const d=await r.json();if(d&&Array.isArray(d.tasks))cloud=d}
-    }catch(e){_showSync('fail','读取云端失败');_uploading=false;return}
-    // Step 2: Merge local + cloud
-    const toSave=cloud?smartMerge(ud,cloud):{...ud,_t:Date.now()};
-    toSave._t=Date.now();
+    const toSave={...ud,_t:Date.now()};
     const json=JSON.stringify(toSave);
-    // Step 3: Write merged result
-    const r2=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data',{method:'POST',headers:{'Content-Type':'application/json'},body:json});
-    if(r2.ok){
-      ud=smartMerge(ud,toSave);
+    const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data',{method:'POST',headers:{'Content-Type':'application/json'},body:json});
+    if(r.ok){
       _showSync('ok','↑上传成功 '+toSave.tasks.length+'个任务');
     }else{
-      _showSync('fail','↑上传失败 HTTP'+r2.status);
+      _showSync('fail','↑上传失败 HTTP'+r.status);
     }
-  }catch(e){_showSync('fail','↑上传错误')}
+  }catch(e){_showSync('fail','↑网络错误')}
   _uploading=false;
 }
 // Read cloud → merge with local → update UI
@@ -589,7 +579,7 @@ function toggleTask(id){
   const t=ud.tasks.find(t=>t.id===id);if(!t)return;
   t.completed=!t.completed;t.completedAt=t.completed?new Date().toISOString():null;
   if(t.completed){
-    ud.xp+=20;ud.totalCompleted++;
+    ud.xp+=10;ud.totalCompleted++;
     if(!ud.dailyLog[td])ud.dailyLog[td]={completed:0,total:0};
     ud.dailyLog[td].completed++;
     if(ud.lastActive!==td){
@@ -1192,7 +1182,7 @@ function spawnCfx(x,y){
   for(let i=0;i<25;i++)p.push({x,y,vx:(Math.random()-0.5)*14,vy:(Math.random()-1)*14-3,color:colors[Math.floor(Math.random()*colors.length)],size:Math.random()*5+2,life:1,g:0.35});
   (function anim(){ctx.clearRect(0,0,c.width,c.height);let a=false;p.forEach(q=>{if(q.life>0){a=true;q.x+=q.vx;q.y+=q.vy;q.vy+=q.g;q.life-=0.025;q.size*=0.97;ctx.globalAlpha=q.life;ctx.fillStyle=q.color;ctx.beginPath();ctx.arc(q.x,q.y,q.size,0,Math.PI*2);ctx.fill()}});if(a)requestAnimationFrame(anim);else ctx.clearRect(0,0,c.width,c.height)})();
 }
-function xpPop(x,y){const el=document.createElement('div');el.className='xp-float';el.textContent='+20 XP';el.style.left=x+'px';el.style.top=(y-10)+'px';document.body.appendChild(el);setTimeout(()=>el.remove(),800)}
+function xpPop(x,y){const el=document.createElement('div');el.className='xp-float';el.textContent='+10 XP';el.style.left=x+'px';el.style.top=(y-10)+'px';document.body.appendChild(el);setTimeout(()=>el.remove(),800)}
 
 // ==================== INIT ====================
 const deskInputHtml='<div class="desktop-only px-3 pt-3 pb-2"><div class="flex gap-2"><input id="deskInput" type="text" placeholder="+ 新任务" class="flex-1 bg-[#18181B] border border-[#3F3F46] rounded-lg px-3 py-2 text-sm text-white focus:border-[#8B5CF6] outline-none"><button onclick="triggerAdd(\'deskInput\')" class="bg-[#8B5CF6] text-white px-3 rounded-lg text-sm font-bold">+</button></div></div>';
