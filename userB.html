@@ -449,14 +449,13 @@ const BC=new BroadcastChannel('xcj_sync_'+location.pathname.split('/').pop().rep
 let _saveTimer=null;
 let _uploading=false;
 let _lastCloudVer=0;
-let _ready=false;  // true after first cloud load
 function defaultData(){return{tasks:[],xp:0,totalCompleted:0,streak:0,maxStreak:0,badges:[],customBadges:[],dailyLog:{},lastActive:null,profile:{name:'我',avatar:'🐱'},dock:['today','calendar','history','badges','goals'],routines:[],goals:[],goalLogs:{},lastRoutineGen:null,theme:'purple',createdAt:new Date().toISOString().split('T')[0],_v:3}}
 function mergeData(d){
   const def=defaultData();
   return{...def,...d,profile:{...def.profile,...(d.profile||{})},dock:d.dock||def.dock,routines:d.routines||[],goals:d.goals||[],goalLogs:d.goalLogs||{},lastRoutineGen:d.lastRoutineGen||null,theme:d.theme||'purple',_v:3};
 }
 async function kvUpload(){
-  if(_uploading||!_ready)return;
+  if(_uploading)return;
   _uploading=true;
   try{
     _lastCloudVer++;
@@ -476,7 +475,6 @@ async function kvDownload(){
     if(cloud._ver!==undefined&&cloud._ver<=_lastCloudVer)return;
     ud=mergeData(cloud);
     _lastCloudVer=cloud._ver||0;
-    _ready=true;
     applyTheme(ud.theme||'purple');
     renderAll();renderDock();
     _showSync('ok','↓ '+ud.tasks.length+'任务');
@@ -508,7 +506,7 @@ function saveData(){
 // Poll every 2s
 setInterval(kvDownload,2000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')kvDownload()});
-window.addEventListener('beforeunload',()=>{clearTimeout(_saveTimer);if(!_uploading&&_ready)kvUpload()});
+window.addEventListener('beforeunload',()=>{clearTimeout(_saveTimer);if(!_uploading)kvUpload()});
 BC.onmessage=e=>{try{const d=JSON.parse(e.data);if(d&&Array.isArray(d.tasks)){ud=mergeData(d);applyTheme(ud.theme||'purple');renderAll();renderDock()}}catch(e){}};
 
 function today(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
@@ -1098,7 +1096,7 @@ function exportData(){
 }
 function resetData(){
   if(!confirm('确定清空所有数据？此操作不可恢复！'))return;
-  ud=defaultData();_ready=true;
+  ud=defaultData();
   const empty={...defaultData(),_ver:++_lastCloudVer};
   fetch('https://kvdb.io/'+KVDB_BUCKET+'/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(empty)}).catch(()=>{});
   renderAll();renderDock();setView('today');
