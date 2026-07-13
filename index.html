@@ -441,8 +441,9 @@ const SYS_BADGES=[
 
 // ==================== DATA (kvdb only, no localStorage) ====================
 // Strategy: cloud-first, no local cache
-// All data lives in kvdb. Every operation uploads immediately.
-// Polling downloads fresh data every 2s. No stale cache issues.
+// Upload: read cloud _ver first → merge local changes → write back
+// Download: poll every 1s, always apply if newer
+// Upload triggers immediate re-download to catch merge conflicts
 let ud=defaultData();
 const KVDB_BUCKET='6motzc9fYAADYrSLwYtqKQ';
 const BC=new BroadcastChannel('xcj_sync_'+location.pathname.split('/').pop().replace('.html',''));
@@ -458,16 +459,42 @@ async function kvUpload(){
   if(_uploading)return;
   _uploading=true;
   try{
-    // Read cloud first to get latest _ver, avoid overwriting newer data
+    // Read cloud to get latest _ver and merge
+    let cloudVer=0;
     try{
       const cr=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data');
-      if(cr.ok){const cd=await cr.json();if(cd&&cd._ver!==undefined&&cd._ver>_lastCloudVer)_lastCloudVer=cd._ver}
+      if(cr.ok){const cd=await cr.json();if(cd&&Array.isArray(cd.tasks)){
+        // Merge: if cloud has newer data, incorporate it
+        if(cd._ver!==undefined&&cd._ver>_lastCloudVer){
+          // Merge tasks by id - combine both local and cloud tasks
+          const taskMap=new Map();
+          ud.tasks.forEach(t=>taskMap.set(String(t.id),t));
+          cd.tasks.forEach(t=>{
+            const ex=taskMap.get(String(t.id));
+            if(!ex)taskMap.set(String(t.id),t);
+            else if(t.completed&&!ex.completed)taskMap.set(String(t.id),{...ex,...t});
+          });
+          ud.tasks=Array.from(taskMap.values());
+          ud.xp=Math.max(ud.xp,cd.xp||0);
+          ud.totalCompleted=Math.max(ud.totalCompleted,cd.totalCompleted||0);
+          ud.streak=Math.max(ud.streak,cd.streak||0);
+          ud.maxStreak=Math.max(ud.maxStreak,cd.maxStreak||0);
+          if(cd.profile&&cd.profile.name!=='我')ud.profile={...ud.profile,...cd.profile};
+          ud.badges=[...new Set([...(ud.badges||[]),...(cd.badges||[])])];
+          ud.customBadges=[...new Set([...(ud.customBadges||[]),...(cd.customBadges||[])])];
+          ud.dailyLog={...(ud.dailyLog||{}),...(cd.dailyLog||{})};
+        }
+        cloudVer=cd._ver||0;
+      }}
     }catch(e){}
-    _lastCloudVer++;
+    _lastCloudVer=Math.max(_lastCloudVer,cloudVer)+1;
     const toSave={...ud,_ver:_lastCloudVer};
     const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(toSave)});
-    if(r.ok){_showSync('ok','↑ '+toSave.tasks.length+'任务')}
-    else{_showSync('fail','↑失败')}
+    if(r.ok){
+      _showSync('ok','↑ '+toSave.tasks.length+'任务');
+      // Immediately download to catch any concurrent changes
+      setTimeout(kvDownload,500);
+    }else{_showSync('fail','↑失败')}
   }catch(e){_showSync('fail','↑网络错误')}
   _uploading=false;
 }
@@ -492,7 +519,7 @@ function _showSync(status,msg){
     d.style.display='inline-block';d.style.width='8px';d.style.height='8px';d.style.borderRadius='50%';d.style.marginLeft='6px';
     d.style.background=status==='ok'?'#22C55E':'#EF4444';
     d.title=status==='ok'?'已同步':'同步失败(点击重试)';
-    if(status==='ok')setTimeout(()=>{if(d)d.style.display='none'},3000);
+    if(status==='ok')setTimeout(()=>{if(d)d.style.display='none'},1500);
   }
   if(s)s.textContent=msg||'';
 }
@@ -508,8 +535,8 @@ function saveData(){
   clearTimeout(_saveTimer);
   _saveTimer=setTimeout(kvUpload,200);
 }
-// Poll every 2s
-setInterval(kvDownload,2000);
+// Poll every 1s
+setInterval(kvDownload,1000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')kvDownload()});
 window.addEventListener('beforeunload',()=>{clearTimeout(_saveTimer);if(!_uploading)kvUpload()});
 BC.onmessage=e=>{try{const d=JSON.parse(e.data);if(d&&Array.isArray(d.tasks)){ud=mergeData(d);applyTheme(ud.theme||'purple');renderAll();renderDock()}}catch(e){}};
