@@ -753,7 +753,7 @@ function xpPop(x,y){const el=document.createElement('div');el.className='xp-floa
 
 // ==================== INIT ====================
 const deskInputHtml='<div class="desktop-only px-3 pt-3 pb-2"><div class="flex gap-2"><input id="deskInput" type="text" placeholder="+ 新任务" class="flex-1 bg-[#18181B] border border-[#3F3F46] rounded-lg px-3 py-2 text-sm text-white focus:border-[#8B5CF6] outline-none"><button onclick="triggerAdd(\'deskInput\')" class="bg-[#8B5CF6] text-white px-3 rounded-lg text-sm font-bold">+</button></div></div>';
-document.addEventListener('DOMContentLoaded',async()=>{
+async function initApp(){
   applyTheme(ud.theme||'purple');
   const tvd=document.getElementById('todayViewDate');if(tvd)tvd.value=td;
   const sb=document.querySelector('.desktop-only nav');
@@ -762,8 +762,15 @@ document.addEventListener('DOMContentLoaded',async()=>{
   renderAll();renderDock();setView('today');
   // Load from kvdb (replace local if cloud has newer version)
   await kvDownload();
+  // Re-render after cloud data loaded
+  renderAll();renderDock();
   // Now generate routine tasks based on latest data
   genRoutineTasks();
-});
-// Fallback: if DOMContentLoaded already fired, re-render on window load
-window.addEventListener('load',()=>{setTimeout(()=>{renderHeader();renderDock()},100)});
+}
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',initApp);
+}else{
+  initApp();
+}
+// Fallback: re-render on window load
+window.addEventListener('load',()=>{setTimeout(()=>{renderAll();renderDock()},100)});
