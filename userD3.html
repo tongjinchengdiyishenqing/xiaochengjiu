@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>小成就</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700;900&display=swap');
+:root{--bg:#09090B;--bg1:#18181B;--bg2:#27272A;--bg3:#3F3F46;--ink1:#FAFAFA;--ink2:#A1A1AA;--ink3:#71717A;--ac:#8B5CF6;--ac2:#6D28D9;--ac3:#A78BFA;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+body{font-family:'Noto Sans SC',system-ui,sans-serif;background:var(--bg);color:var(--ink1);min-height:100vh}
+input,select,textarea{color-scheme:dark}
+select{-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2371717A' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+input[type="date"]::-webkit-calendar-picker-indicator,input[type="time"]::-webkit-calendar-picker-indicator{filter:invert(0.7);cursor:pointer}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:3px}
+input,select,textarea{font-family:inherit;outline:none;border:none}
+::placeholder{color:#52525B}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:none;opacity:1}}
+@keyframes pop{0%{transform:scale(0)}60%{transform:scale(1.1)}100%{transform:scale(1)}}
+@keyframes floatUp{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-36px)}}
+.task-enter{animation:slideUp .3s ease-out}
+.xp-float{position:fixed;pointer-events:none;font-weight:700;color:var(--ac);font-size:13px;z-index:200;animation:floatUp .8s ease-out forwards}
+.badge-pop{animation:pop .4s cubic-bezier(.34,1.56,.64,1)}
+.modal-bg{animation:fadeIn .15s}.modal-box{animation:slideUp .25s ease-out}
+@media(min-width:768px){.mobile-only{display:none!important}body{overflow:hidden}}
+@media(max-width:767px){.desktop-only{display:none!important}}
+</style>
+</head>
+<body>
+<canvas id="cfx" style="position:fixed;inset:0;pointer-events:none;z-index:200"></canvas>
+
+<!-- ==================== APP ==================== -->
+<div id="app" class="h-screen flex flex-col">
+  <!-- Mobile Header -->
+  <header class="mobile-only sticky top-0 z-40 bg-[#09090B] border-b border-[#27272A] px-4 py-2.5 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <button onclick="toggleMobMenu()" class="text-gray-400 text-lg p-1">☰</button>
+      <span class="font-bold text-sm" style="color:var(--ac)">小成就</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <button onclick="showProfile()" class="flex items-center gap-1.5 bg-[#18181B] px-2 py-1 rounded-lg">
+        <span id="mobAvatar" class="text-base"></span>
+        <span id="mobName" class="text-[11px] text-gray-400 font-medium max-w-[60px] truncate"></span><span id="_syncDot" style="display:none" onclick="manualSync()" title="点击手动同步"></span><span id="_syncStatus" class="text-[9px] ml-1" style="color:#666"></span>
+      </button>
+      <div class="flex items-center gap-1 bg-[#18181B] px-2 py-1 rounded-lg">
+        <span class="text-[10px] text-gray-500">Lv.</span><span id="mobLv" class="text-xs font-bold" style="color:var(--ac)">1</span>
+        <div class="w-10 h-1 bg-[#3F3F46] rounded-full overflow-hidden"><div id="mobXpBar" class="h-full rounded-full transition-all duration-500" style="width:0%;background:var(--ac)"></div></div>
+        <span id="mobXpText" class="text-[9px] text-gray-500">0/100</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Menu Drawer -->
+  <div id="mobMenu" class="mobile-only fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/50" onclick="toggleMobMenu()"></div>
+    <div class="absolute left-0 top-0 bottom-0 w-64 bg-[#18181B] border-r border-[#27272A]" style="animation:slideUp .2s">
+      <div class="p-4 border-b border-[#27272A] flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span id="menuAvatar" class="text-2xl"></span>
+          <div><div id="menuName" class="text-sm font-bold"></div><div id="menuLv" class="text-[10px] text-gray-500">Lv.1 · 还需 100 XP</div></div>
+        </div>
+        <button onclick="toggleMobMenu()" class="text-gray-500">✕</button>
+      </div>
+      <div class="p-3 space-y-1">
+        <button onclick="setView('today');toggleMobMenu()" class="mob-nav w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-left bg-[#27272A] text-white" data-v="today">☰ 今日任务</button>
+        <button onclick="setView('calendar');toggleMobMenu()" class="mob-nav w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-left text-gray-500 hover:bg-[#27272A]" data-v="calendar">📅 日历</button>
+        <button onclick="setView('timeline');toggleMobMenu()" class="mob-nav w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-left text-gray-500 hover:bg-[#27272A]" data-v="timeline">🕐 时间轴</button>
+        <button onclick="setView('history');toggleMobMenu()" class="mob-nav w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-left text-gray-500 hover:bg-[#27272A]" data-v="history">📜 历史</button>
+        <button onclick="setView('badges');toggleMobMenu()" class="mob-nav w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-left text-gray-500 hover:bg-[#27272A]" data-v="badges">🏆 徽章</button>
+        <button onclick="setView('goals');toggleMobMenu()" class="mob-nav w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-left text-gray-500 hover:bg-[#27272A]" data-v="goals">🎯 目标</button>
+        <button onclick="setView('stats');toggleMobMenu()" class="mob-nav w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-left text-gray-500 hover:bg-[#27272A]" data-v="stats">📊 统计</button>
+      </div>
+      <div class="absolute bottom-0 left-0 right-0 p-3 border-t border-[#27272A]">
+        <button onclick="showProfile();toggleMobMenu()" class="w-full text-left text-sm text-gray-500 py-2 px-3 rounded-lg hover:bg-[#27272A]">👤 个人资料</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Desktop Header -->
+  <header class="desktop-only flex items-center justify-between px-5 h-11 border-b border-[#27272A] flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <span class="font-bold text-sm" style="color:var(--ac)">小成就</span>
+      <span class="text-gray-600 text-xs">/</span>
+      <span id="deskTitle" class="text-gray-500 text-xs">今日任务</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <button onclick="showProfile()" class="flex items-center gap-2 bg-[#18181B] hover:bg-[#27272A] px-3 py-1 rounded-lg transition-colors">
+        <span id="deskAvatar" class="text-base"></span>
+        <span id="deskName" class="text-xs text-gray-400 font-medium"></span>
+      </button>
+      <div class="flex items-center gap-1.5 bg-[#18181B] px-2.5 py-1 rounded-lg">
+        <span class="text-xs text-gray-500">Lv.</span><span id="deskLv" class="text-xs font-bold" style="color:var(--ac)">1</span>
+        <div class="w-14 h-1.5 bg-[#3F3F46] rounded-full overflow-hidden"><div id="deskXpBar" class="h-full rounded-full transition-all duration-500" style="width:0%;background:var(--ac)"></div></div>
+        <span id="deskXp" class="text-[10px] text-gray-500">0/100 XP</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="flex flex-1 min-h-0 overflow-hidden">
+    <!-- Desktop Sidebar -->
+    <nav class="desktop-only w-52 border-r border-[#27272A] flex-col flex-shrink-0">
+      <div class="p-3 space-y-0.5">
+        <button onclick="setView('today')" class="desk-nav w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs text-left bg-[#27272A] text-white" data-v="today">☰ 今日任务</button>
+        <button onclick="setView('calendar')" class="desk-nav w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs text-left text-gray-500 hover:bg-[#27272A]" data-v="calendar">📅 日历</button>
+        <button onclick="setView('timeline')" class="desk-nav w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs text-left text-gray-500 hover:bg-[#27272A]" data-v="timeline">🕐 时间轴</button>
+        <button onclick="setView('history')" class="desk-nav w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs text-left text-gray-500 hover:bg-[#27272A]" data-v="history">📜 历史</button>
+        <button onclick="setView('badges')" class="desk-nav w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs text-left text-gray-500 hover:bg-[#27272A]" data-v="badges">🏆 徽章</button>
+        <button onclick="setView('goals')" class="desk-nav w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs text-left text-gray-500 hover:bg-[#27272A]" data-v="goals">🎯 目标</button>
+        <button onclick="setView('stats')" class="desk-nav w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs text-left text-gray-500 hover:bg-[#27272A]" data-v="stats">📊 统计</button>
+      </div>
+      <div class="mt-auto p-3 border-t border-[#27272A]">
+        <div class="text-xs text-gray-500 mb-1">今日进度</div>
+        <div class="flex items-center gap-2 mb-1">
+          <span class="dc-done text-lg font-bold">0</span><span class="text-gray-500 text-xs">/ <span class="dc-total">0</span> 完成</span>
+        </div>
+        <div class="w-full h-1.5 bg-[#3F3F46] rounded-full overflow-hidden"><div class="dc-bar h-full rounded-full transition-all duration-500" style="width:0%;background:var(--ac)"></div></div>
+      </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-1 min-h-0 overflow-y-auto pb-32" id="mainArea">
+      <!-- TODAY -->
+      <div id="v-today" class="vp p-4 md:p-6 max-w-2xl mx-auto">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <button onclick="todayViewPrev()" class="text-gray-400 hover:text-white px-1">‹</button>
+            <input id="todayViewDate" type="date" value="" onchange="switchTodayView(this.value)" class="bg-transparent border-none text-sm font-bold focus:outline-none cursor-pointer" style="color:var(--ink1)">
+            <button onclick="todayViewNext()" class="text-gray-400 hover:text-white px-1">›</button>
+            <button onclick="resetTodayView()" class="text-[10px] px-1.5 py-0.5 rounded border border-[#3F3F46] text-gray-400 hover:text-white">今天</button>
+          </div>
+          <div class="flex gap-2">
+            <select id="fCat" onchange="renderToday()" class="bg-[#18181B] border border-[#3F3F46] rounded-lg px-2 py-1.5 text-xs text-gray-400"><option value="all">全部</option><option value="work">💼 工作</option><option value="study">📖 学习</option><option value="life">🏠 生活</option><option value="health">💪 健康</option><option value="social">👥 社交</option><option value="creative">🎨 创意</option><option value="finance">💰 理财</option><option value="read">📚 阅读</option></select>
+            <select id="fSort" onchange="renderToday()" class="bg-[#18181B] border border-[#3F3F46] rounded-lg px-2 py-1.5 text-xs text-gray-400"><option value="time">按时间</option><option value="pri">按优先级</option></select>
+          </div>
+        </div>
+        <div class="bg-[#18181B] rounded-xl p-3 mb-4">
+          <div class="flex items-center justify-between text-xs mb-1.5"><span class="text-gray-500" id="todayProgLabel">今日进度</span><span id="todayProgText" class="text-gray-400">0 / 0</span></div>
+          <div class="w-full h-2.5 bg-[#27272A] rounded-full overflow-hidden"><div id="todayProgBar" class="h-full rounded-full transition-all duration-500" style="width:0%;background:var(--ac)"></div></div>
+        </div>
+        <div class="desktop-only mb-4">
+          <div class="flex gap-2"><input id="deskMainInput" type="text" placeholder="输入任务标题，按回车添加..." class="flex-1 bg-[#18181B] border border-[#3F3F46] rounded-lg px-3 py-2 text-sm text-white focus:border-[#8B5CF6] transition-colors"><button onclick="triggerAdd('deskMainInput')" class="bg-[#8B5CF6] text-white px-4 rounded-lg text-sm font-bold transition-colors">添加</button></div>
+        </div>
+        <div id="taskList" class="space-y-2"></div>
+        <div id="emptyToday" class="hidden text-center py-16"><div class="text-4xl mb-3">📋</div><p class="text-gray-500 text-sm">还没有任务，添加一个吧</p></div>
+      </div>
+
+      <!-- CALENDAR -->
+      <div id="v-calendar" class="vp p-4 md:p-6 max-w-2xl mx-auto hidden">
+        <div class="flex items-center justify-between mb-4">
+          <h1 class="text-lg md:text-xl font-bold">日历</h1>
+          <div class="flex items-center gap-2">
+            <button onclick="changeMonth(-1)" class="text-gray-400 hover:text-white text-lg px-2">‹</button>
+            <span id="calMonth" class="text-sm font-bold min-w-[100px] text-center"></span>
+            <button onclick="changeMonth(1)" class="text-gray-400 hover:text-white text-lg px-2">›</button>
+          </div>
+        </div>
+        <div class="grid grid-cols-7 gap-1 mb-2">
+          <div class="text-center text-xs text-gray-500 py-2">日</div><div class="text-center text-xs text-gray-500 py-2">一</div>
+          <div class="text-center text-xs text-gray-500 py-2">二</div><div class="text-center text-xs text-gray-500 py-2">三</div>
+          <div class="text-center text-xs text-gray-500 py-2">四</div><div class="text-center text-xs text-gray-500 py-2">五</div>
+          <div class="text-center text-xs text-gray-500 py-2">六</div>
+        </div>
+        <div id="calGrid" class="grid grid-cols-7 gap-1"></div>
+        <div id="calDetail" class="mt-4 hidden"></div>
+      </div>
+
+      <!-- TIMELINE -->
+      <div id="v-timeline" class="vp p-4 md:p-6 max-w-2xl mx-auto hidden">
+        <h1 class="text-lg md:text-xl font-bold mb-1">时间轴</h1><p class="text-xs text-gray-500 mb-4">今日带时间的任务</p>
+        <div id="tlList" class="relative pl-7"></div>
+        <div id="emptyTL" class="hidden text-center py-16"><div class="text-4xl mb-3">📅</div><p class="text-gray-500 text-sm">给任务设置时间后在此查看</p></div>
+      </div>
+
+      <!-- HISTORY -->
+      <div id="v-history" class="vp p-4 md:p-6 max-w-2xl mx-auto hidden">
+        <h1 class="text-lg md:text-xl font-bold mb-4">历史任务</h1>
+        <div class="flex gap-2 mb-4">
+          <input id="histDate" type="date" onchange="renderHistory()" class="bg-[#18181B] border border-[#3F3F46] rounded-lg px-3 py-2 text-xs text-white">
+          <select id="histFilter" onchange="renderHistory()" class="bg-[#18181B] border border-[#3F3F46] rounded-lg px-2 py-2 text-xs text-gray-400">
+            <option value="all">全部</option><option value="completed">已完成</option><option value="pending">未完成</option>
+          </select>
+        </div>
+        <div id="histList" class="space-y-2"></div>
+        <div id="emptyHist" class="hidden text-center py-16"><div class="text-4xl mb-3">📜</div><p class="text-gray-500 text-sm">该日期没有任务</p></div>
+      </div>
+
+      <!-- BADGES -->
+      <div id="v-badges" class="vp p-4 md:p-6 max-w-2xl mx-auto hidden">
+        <div class="flex items-center justify-between mb-5">
+          <h1 class="text-lg md:text-xl font-bold">成就徽章</h1>
+          <button onclick="showAddBadgeModal()" class="text-xs bg-[#8B5CF6] text-white px-3 py-1.5 rounded-lg font-semibold">+ 自定义</button>
+        </div>
+        <div id="badgeSections"></div>
+      </div>
+
+      <!-- STATS -->
+      <div id="v-stats" class="vp p-4 md:p-6 max-w-2xl mx-auto hidden">
+        <h1 class="text-lg md:text-xl font-bold mb-5">数据统计</h1>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+          <div class="bg-[#18181B] rounded-xl p-4"><div class="text-2xl font-bold st-total">0</div><div class="text-xs text-gray-500 mt-0.5">累计完成</div></div>
+          <div class="bg-[#18181B] rounded-xl p-4"><div class="text-2xl font-bold st-xp" style="color:var(--ac)">0</div><div class="text-xs text-gray-500 mt-0.5">总 XP</div></div>
+          <div class="bg-[#18181B] rounded-xl p-4"><div class="text-2xl font-bold st-lv" style="color:var(--ac)">1</div><div class="text-xs text-gray-500 mt-0.5">当前等级</div></div>
+          <div class="bg-[#18181B] rounded-xl p-4"><div class="text-2xl font-bold st-streak">0</div><div class="text-xs text-gray-500 mt-0.5">最长连续打卡</div></div>
+          <div class="bg-[#18181B] rounded-xl p-4"><div class="text-2xl font-bold st-badges">0</div><div class="text-xs text-gray-500 mt-0.5">已解锁徽章</div></div>
+        </div>
+        <div class="bg-[#18181B] rounded-xl p-4 mb-6">
+          <div class="flex items-center justify-between text-xs mb-2"><span class="text-gray-500">升级进度</span><span class="st-xp-text text-gray-400"></span></div>
+          <div class="w-full h-2.5 bg-[#27272A] rounded-full overflow-hidden"><div class="st-xp-bar h-full rounded-full transition-all duration-500" style="width:0%;background:var(--ac)"></div></div>
+        </div>
+        <h2 class="text-sm font-semibold text-gray-400 mb-3">近 7 日完成量</h2>
+        <div id="weekChart" class="flex items-end gap-2 h-28 md:h-32"></div>
+      </div>
+
+      <!-- GOALS -->
+      <div id="v-goals" class="vp p-4 md:p-6 max-w-2xl mx-auto hidden">
+        <div class="flex items-center justify-between mb-5">
+          <h1 class="text-lg md:text-xl font-bold">年度目标</h1>
+          <button onclick="showGoalModal()" class="text-xs bg-[#8B5CF6] text-white px-3 py-1.5 rounded-lg font-semibold">+ 新目标</button>
+        </div>
+        <div id="goalList" class="space-y-3"></div>
+        <div id="emptyGoals" class="hidden text-center py-16"><div class="text-4xl mb-3">🎯</div><p class="text-gray-500 text-sm">还没有年度目标，添加一个吧</p></div>
+      </div>
+    </main>
+  </div>
+
+<!-- Mobile Bottom Bar -->
+<div class="mobile-only fixed bottom-0 left-0 right-0 z-40 bg-[#09090B] border-t border-[#27272A] px-3 py-2">
+  <div class="flex gap-2 max-w-lg mx-auto mb-2">
+    <input id="mobInput" type="text" placeholder="输入任务..." class="flex-1 bg-[#18181B] border border-[#3F3F46] rounded-xl px-3 py-2.5 text-sm text-white focus:border-[#8B5CF6] outline-none">
+    <button onclick="triggerAdd('mobInput')" class="bg-[#8B5CF6] text-white px-5 rounded-xl text-sm font-bold">添加</button>
+  </div>
+  <div id="mobDock" class="flex justify-center gap-5"></div>
+</div>
+
+<!-- ==================== MODALS ==================== -->
+
+<!-- Task Detail Sheet -->
+<div id="detailSheet" class="fixed inset-0 z-50 hidden items-end">
+  <div class="absolute inset-0 bg-black/50" onclick="closeDetail()"></div>
+  <div class="relative bg-[#18181B] rounded-t-2xl p-5 w-full max-w-md mx-auto" style="animation:slideUp .25s">
+    <div class="w-8 h-1 bg-[#3F3F46] rounded-full mx-auto mb-4"></div>
+    <div id="detailBody"></div>
+  </div>
+</div>
+
+<!-- Category Modal -->
+<div id="catModal" class="fixed inset-0 z-[100] hidden items-center justify-center">
+  <div class="absolute inset-0 bg-black/60" onclick="closeCat()"></div>
+  <div class="relative bg-[#18181B] border border-[#27272A] rounded-xl p-5 w-72 modal-box mx-4 max-h-[85vh] overflow-y-auto">
+    <h3 class="text-sm font-bold mb-3">添加任务</h3>
+    <div class="space-y-2.5 mb-3">
+      <div><label class="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">日期</label><input id="catDate" type="date" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2.5 text-sm text-white focus:border-[#8B5CF6] transition-colors"></div>
+      <div class="flex gap-2">
+        <div class="flex-1"><label class="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">时间</label><input id="catTime" type="time" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2.5 text-sm text-white focus:border-[#8B5CF6] transition-colors"></div>
+      </div>
+      <div><label class="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">优先级</label>
+        <div class="flex gap-1.5" id="priBtns">
+          <button type="button" onclick="selPri('high',this)" class="pri-btn flex-1 py-2 rounded-lg text-xs font-semibold border border-[#3F3F46] bg-[#09090B] text-gray-500 transition-all hover:border-red-500/50">🔴 高</button>
+          <button type="button" onclick="selPri('mid',this)" class="pri-btn flex-1 py-2 rounded-lg text-xs font-semibold border border-[#8B5CF6] bg-[#8B5CF6]/10 text-[#8B5CF6] transition-all active-pri">🟡 中</button>
+          <button type="button" onclick="selPri('low',this)" class="pri-btn flex-1 py-2 rounded-lg text-xs font-semibold border border-[#3F3F46] bg-[#09090B] text-gray-500 transition-all hover:border-blue-500/50">⚪ 低</button>
+        </div>
+        <input type="hidden" id="catPri" value="mid">
+      </div>
+    </div>
+    <h3 class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">选择分类</h3>
+    <div id="catOpts" class="space-y-1.5"></div>
+    <div class="mt-3 pt-3 border-t border-[#27272A]">
+      <label class="flex items-center gap-2 text-xs text-gray-400 cursor-pointer select-none">
+        <input type="checkbox" id="catRepeat" class="accent-[#8B5CF6] w-4 h-4" onchange="toggleRepeatRange()">
+        <span>设为重复任务（自动添加到日期范围）</span>
+      </label>
+      <div id="repeatRange" class="hidden space-y-2 pl-1 mt-2">
+        <div class="flex gap-2">
+          <div class="flex-1"><label class="text-[10px] text-gray-500 mb-0.5 block">开始日期</label><input id="repeatStart" type="date" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-2 py-1.5 text-xs text-white focus:border-[#8B5CF6] transition-colors"></div>
+          <div class="flex-1"><label class="text-[10px] text-gray-500 mb-0.5 block">结束日期</label><input id="repeatEnd" type="date" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-2 py-1.5 text-xs text-white focus:border-[#8B5CF6] transition-colors"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Badge Modal -->
+<div id="badgeModal" class="fixed inset-0 z-[100] hidden items-center justify-center">
+  <div class="absolute inset-0 bg-black/60" onclick="closeBadgeModal()"></div>
+  <div class="relative bg-[#18181B] border border-[#27272A] rounded-xl p-6 w-72 text-center modal-box mx-4">
+    <div class="text-5xl mb-3" id="bmIcon"></div>
+    <h3 class="text-base font-bold mb-1" id="bmName"></h3>
+    <p class="text-xs text-gray-500 mb-4" id="bmDesc"></p>
+    <button onclick="closeBadgeModal()" class="bg-[#8B5CF6] text-white px-6 py-2 rounded-lg text-sm font-semibold">太棒了</button>
+  </div>
+</div>
+
+<!-- Add Custom Badge Modal -->
+<div id="addBadgeModal" class="fixed inset-0 z-[100] hidden items-center justify-center">
+  <div class="absolute inset-0 bg-black/60" onclick="closeAddBadgeModal()"></div>
+  <div class="relative bg-[#18181B] border border-[#27272A] rounded-xl p-5 w-72 md:w-80 modal-box mx-4">
+    <h3 class="text-sm font-bold mb-4">添加自定义徽章</h3>
+    <div class="space-y-3">
+      <div><label class="text-xs text-gray-500 mb-1 block">徽章名称</label><input id="cbName" type="text" placeholder="例如：早起鸟" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2 text-sm text-white focus:border-[#8B5CF6]"></div>
+      <div><label class="text-xs text-gray-500 mb-1 block">图标 emoji</label><input id="cbIcon" type="text" placeholder="例如：🐦" maxlength="2" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2 text-sm text-white focus:border-[#8B5CF6]"></div>
+      <div><label class="text-xs text-gray-500 mb-1 block">描述</label><input id="cbDesc" type="text" placeholder="例如：连续 3 天 7 点前起床" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2 text-sm text-white focus:border-[#8B5CF6]"></div>
+      <div><label class="text-xs text-gray-500 mb-1 block">达成条件：完成 <input id="cbTarget" type="number" value="1" min="1" class="w-16 bg-[#09090B] border border-[#3F3F46] rounded px-2 py-1 text-sm text-white text-center inline-block"> 个任务</label></div>
+    </div>
+    <button onclick="doAddCustomBadge()" class="w-full bg-[#8B5CF6] text-white py-2.5 rounded-lg text-sm font-bold mt-4">创建徽章</button>
+  </div>
+</div>
+
+<!-- Profile Modal -->
+<div id="profileModal" class="fixed inset-0 z-[100] hidden items-center justify-center">
+  <div class="absolute inset-0 bg-black/60" onclick="closeProfile()"></div>
+  <div class="relative bg-[#18181B] border border-[#27272A] rounded-xl p-5 w-72 md:w-80 modal-box mx-4 max-h-[85vh] overflow-y-auto">
+    <h3 class="text-sm font-bold mb-4">个人资料</h3>
+    <div class="flex items-center gap-3 mb-3">
+      <span id="pfAvatar" class="text-4xl"></span>
+      <div class="flex-1 min-w-0"><div id="pfName" class="text-base font-bold"></div><div id="pfLv" class="text-xs text-gray-500"></div></div>
+    </div>
+    <div class="mb-4">
+      <div class="flex items-center justify-between text-xs mb-1"><span class="text-gray-500">升级进度</span><span id="pfXpText" class="text-gray-400"></span></div>
+      <div class="w-full h-2 bg-[#27272A] rounded-full overflow-hidden"><div id="pfXpBar" class="h-full rounded-full transition-all duration-500" style="width:0%;background:var(--ac)"></div></div>
+    </div>
+    <div class="space-y-3">
+      <div><label class="text-xs text-gray-500 mb-1 block">修改头像</label><div class="flex gap-2 flex-wrap" id="pfAvatarPicker"></div></div>
+      <div><label class="text-xs text-gray-500 mb-1 block">修改昵称</label><input id="pfNameInput" type="text" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2 text-sm text-white focus:border-[#8B5CF6]"></div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">底部工作栏</label>
+        <div id="pfDockOpts" class="flex flex-wrap gap-2"></div>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 mb-1 block">主题风格</label>
+        <div id="pfThemeOpts" class="grid grid-cols-5 gap-2"></div>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="exportData()" class="flex-1 bg-[#09090B] border border-[#3F3F46] text-gray-400 py-2 rounded-lg text-xs">导出备份</button>
+        <button onclick="document.getElementById('importFile').click()" class="flex-1 bg-[#09090B] border border-[#3F3F46] text-gray-400 py-2 rounded-lg text-xs">导入数据</button>
+      </div>
+      <button onclick="resetData()" class="w-full bg-red-900/30 border border-red-800/50 text-red-400 py-2 rounded-lg text-xs mt-2">清空数据</button>
+      <input type="file" id="importFile" accept=".json" class="hidden" onchange="importData(event)">
+      <div class="text-[10px] text-gray-500 text-center mt-1">数据自动保存，导出备份以防万一</div>
+    </div>
+    <button onclick="saveProfile()" class="w-full bg-[#8B5CF6] text-white py-2.5 rounded-lg text-sm font-bold mt-4">保存</button>
+  </div>
+</div>
+
+<!-- Goal Modal -->
+<div id="goalModal" class="fixed inset-0 z-[100] hidden items-center justify-center">
+  <div class="absolute inset-0 bg-black/60" onclick="closeGoalModal()"></div>
+  <div class="relative bg-[#18181B] border border-[#27272A] rounded-xl p-5 w-72 md:w-80 modal-box mx-4 max-h-[85vh] overflow-y-auto">
+    <h3 class="text-sm font-bold mb-4" id="gmTitle">新建年度目标</h3>
+    <div class="space-y-3">
+      <div><label class="text-xs text-gray-500 mb-1 block">目标名称</label><input id="gmName" type="text" placeholder="例如：存钱计划" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2 text-sm text-white focus:border-[#8B5CF6]"></div>
+      <div class="flex gap-2">
+        <div class="flex-1"><label class="text-xs text-gray-500 mb-1 block">图标 emoji</label><input id="gmIcon" type="text" placeholder="💰" maxlength="2" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2 text-sm text-white focus:border-[#8B5CF6]"></div>
+        <div class="flex-1"><label class="text-xs text-gray-500 mb-1 block">单位</label><input id="gmUnit" type="text" placeholder="例如：元" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2 text-sm text-white focus:border-[#8B5CF6]"></div>
+      </div>
+      <div><label class="text-xs text-gray-500 mb-1 block">年度目标总量</label><input id="gmTarget" type="number" value="3650" min="1" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2 text-sm text-white focus:border-[#8B5CF6]"></div>
+      <div><label class="text-xs text-gray-500 mb-1 block">已累计完成</label><input id="gmCurrent" type="number" value="0" min="0" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2 text-sm text-white focus:border-[#8B5CF6]"></div>
+    </div>
+    <button onclick="saveGoal()" class="w-full bg-[#8B5CF6] text-white py-2.5 rounded-lg text-sm font-bold mt-4">保存</button>
+  </div>
+</div>
+
+<!-- Routine Modal -->
+<div id="routineModal" class="fixed inset-0 z-[100] hidden items-center justify-center">
+  <div class="absolute inset-0 bg-black/60" onclick="closeRoutineModal()"></div>
+  <div class="relative bg-[#18181B] border border-[#27272A] rounded-xl p-5 w-72 md:w-80 modal-box mx-4 max-h-[85vh] overflow-y-auto">
+    <h3 class="text-sm font-bold mb-4">每日例行任务</h3>
+    <div id="routineList" class="space-y-2 mb-4 max-h-48 overflow-y-auto"></div>
+    <div class="space-y-3 border-t border-[#27272A] pt-3">
+      <div><label class="text-xs text-gray-500 mb-1 block">任务名称</label><input id="rmTitle" type="text" placeholder="例如：晨跑 3km" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2 text-sm text-white focus:border-[#8B5CF6]"></div>
+      <div class="flex gap-2">
+        <div class="flex-1"><label class="text-xs text-gray-500 mb-1 block">分类</label><select id="rmCat" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2 text-sm text-white"><option value="work">💼 工作</option><option value="study">📖 学习</option><option value="life">🏠 生活</option><option value="health">💪 健康</option></select></div>
+        <div class="flex-1"><label class="text-xs text-gray-500 mb-1 block">时间</label><input id="rmTime" type="time" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2 text-sm text-white"></div>
+      </div>
+      <button onclick="addRoutine()" class="w-full bg-[#8B5CF6] text-white py-2 rounded-lg text-sm font-bold">添加</button>
+    </div>
+  </div>
+</div>
+
+<script>KVB="4WByNLpbqe9CDUrNRUoWEH";var s=document.createElement("script");s.src="app.js?_="+Date.now();document.head.appendChild(s)</script>
+
+</body>
+</html>
