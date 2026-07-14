@@ -91,8 +91,13 @@ async function kvUpload(){
 async function kvDownload(){
   try{
     const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data?_='+Date.now());
-    if(!r.ok)return;
-    const cloud=await r.json();
+    if(!r.ok){
+      if(r.status===429){_showSync('fail','限流稍后重试')}
+      return;
+    }
+    const text=await r.text();
+    if(!text)return;
+    const cloud=JSON.parse(text);
     if(!cloud||!Array.isArray(cloud.tasks))return;
     if(cloud._ver!==undefined&&cloud._ver<=_lastCloudVer)return;
     ud=mergeData(cloud);
@@ -125,8 +130,8 @@ function saveData(){
   clearTimeout(_saveTimer);
   _saveTimer=setTimeout(kvUpload,200);
 }
-// Poll every 1s
-setInterval(kvDownload,1000);
+// Poll every 5s to avoid kvdb 429 rate limit
+setInterval(kvDownload,5000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')kvDownload()});
 window.addEventListener('beforeunload',()=>{clearTimeout(_saveTimer);if(!_uploading)kvUpload()});
 BC.onmessage=e=>{try{const d=JSON.parse(e.data);if(d&&Array.isArray(d.tasks)){ud=mergeData(d);applyTheme(ud.theme||'purple');renderAll();renderDock()}}catch(e){}};
