@@ -755,17 +755,15 @@ function xpPop(x,y){const el=document.createElement('div');el.className='xp-floa
 const deskInputHtml='<div class="desktop-only px-3 pt-3 pb-2"><div class="flex gap-2"><input id="deskInput" type="text" placeholder="+ 新任务" class="flex-1 bg-[#18181B] border border-[#3F3F46] rounded-lg px-3 py-2 text-sm text-white focus:border-[#8B5CF6] outline-none"><button onclick="triggerAdd(\'deskInput\')" class="bg-[#8B5CF6] text-white px-3 rounded-lg text-sm font-bold">+</button></div></div>';
 async function initApp(){
   applyTheme(ud.theme||'purple');
+  // Load from kvdb FIRST, before any rendering
+  await kvDownload();
+  // Now render with cloud data
+  try{renderAll();renderDock();setView('today')}catch(e){console.error('render error:',e)}
   const tvd=document.getElementById('todayViewDate');if(tvd)tvd.value=td;
   const sb=document.querySelector('.desktop-only nav');
   if(sb){const wrap=document.createElement('div');wrap.innerHTML=deskInputHtml;sb.insertBefore(wrap.firstChild,sb.firstChild)}
-  // Render UI with local data first (fast initial paint)
-  renderAll();renderDock();setView('today');
-  // Load from kvdb (replace local if cloud has newer version)
-  await kvDownload();
-  // Re-render after cloud data loaded
-  renderAll();renderDock();
-  // Now generate routine tasks based on latest data
-  genRoutineTasks();
+  // Generate routine tasks based on latest data
+  try{genRoutineTasks()}catch(e){console.error('genRoutine error:',e)}
 }
 if(document.readyState==='loading'){
   document.addEventListener('DOMContentLoaded',initApp);
