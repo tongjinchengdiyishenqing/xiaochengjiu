@@ -78,7 +78,28 @@ async function kvUpload(){
   if(_uploading)return;
   _uploading=true;
   try{
-    // Simple: just write local data. No merge. Last write wins.
+    // PROTECTION: Don't upload if local is empty but cloud might have data
+    if(ud.tasks.length===0){
+      // Check cloud first
+      try{
+        const cr=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data?_='+Date.now());
+        if(cr.ok){
+          const text=await cr.text();
+          if(text){
+            const cd=JSON.parse(text);
+            if(cd&&Array.isArray(cd.tasks)&&cd.tasks.length>0){
+              // Cloud has data! Don't overwrite. Download instead.
+              ud=mergeData(cd);
+              _lastCloudVer=Math.max(cd._ver||0,Date.now());
+              renderAll();renderDock();
+              _showSync('fail','本地为空已从云端恢复');
+              _uploading=false;
+              return;
+            }
+          }
+        }
+      }catch(e){}
+    }
     const toSave={...ud,_ver:Date.now()};
     const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(toSave)});
     if(r.ok){
