@@ -109,11 +109,25 @@ async function kvUpload(){
   }catch(e){_showSync('fail','↑错误: '+e.message)}
   _uploading=false;
 }
+let _rateLimitReset=0;
 async function kvDownload(){
+  // If rate limited, wait until reset time
+  if(_rateLimitReset>0){
+    if(Date.now()<_rateLimitReset)return;
+    _rateLimitReset=0;
+  }
   try{
     const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data?_='+Date.now());
     if(!r.ok){
-      if(r.status===429){_showSync('fail','限流稍后重试')}
+      if(r.status===429){
+        const reset=r.headers.get('x-ratelimit-reset');
+        _rateLimitReset=reset?parseInt(reset)*1000:Date.now()+30000;
+        const wait=Math.max(0,Math.ceil((_rateLimitReset-Date.now())/1000));
+        _showSync('fail','限流，'+wait+'秒后自动恢复');
+        // Schedule retry after reset
+        setTimeout(kvDownload,Math.min(wait*1000,60000));
+        return;
+      }
       return;
     }
     const text=await r.text();
