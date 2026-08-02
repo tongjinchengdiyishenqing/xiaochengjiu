@@ -214,6 +214,8 @@ input,select,textarea{font-family:inherit;outline:none;border:none}
         </div>
         <h2 class="text-sm font-semibold text-gray-400 mb-3">近 7 日完成量</h2>
         <div id="weekChart" class="flex items-end gap-2 h-28 md:h-32"></div>
+        <h2 class="text-sm font-semibold text-gray-400 mb-3 mt-6">习惯追踪 <span class="text-xs text-gray-600">（完成任务时自动提取数字）</span></h2>
+        <div id="trackStats"></div>
       </div>
 
       <!-- GOALS -->
@@ -454,10 +456,54 @@ let _uploading=false;
 let _lastCloudVer=0;
 function today(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 function today_fmt(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
-function defaultData(){return{tasks:[],xp:0,totalCompleted:0,streak:0,maxStreak:0,badges:[],customBadges:[],dailyLog:{},lastActive:null,profile:{name:'我',avatar:'🐱'},dock:['today','calendar','history','badges','goals'],routines:[],goals:[],goalLogs:{},lastRoutineGen:null,theme:'purple',createdAt:today(),_v:3}}
+function defaultData(){return{tasks:[],xp:0,totalCompleted:0,streak:0,maxStreak:0,badges:[],customBadges:[],dailyLog:{},lastActive:null,profile:{name:'我',avatar:'🐱'},dock:['today','calendar','history','badges','goals'],routines:[],goals:[],goalLogs:{},lastRoutineGen:null,theme:'purple',createdAt:today(),trackStats:{},_v:3}}
 function mergeData(d){
   const def=defaultData();
-  return{...def,...d,profile:{...def.profile,...(d.profile||{})},dock:d.dock||def.dock,routines:d.routines||[],goals:d.goals||[],goalLogs:d.goalLogs||{},lastRoutineGen:d.lastRoutineGen||null,theme:d.theme||'purple',_v:3};
+  return{...def,...d,profile:{...def.profile,...(d.profile||{})},dock:d.dock||def.dock,routines:d.routines||[],goals:d.goals||[],goalLogs:d.goalLogs||{},lastRoutineGen:d.lastRoutineGen||null,theme:d.theme||'purple',trackStats:d.trackStats||{},_v:3};
+}
+// ==================== TRACK RULES (auto-extract stats from task titles) ====================
+const TRACK_RULES=[
+  {key:'words',label:'背单词',icon:'📖',unit:'个',patterns:[/背了?(\d+)\s*个?\s*单词/,/(\d+)\s*个?\s*单词/,/单词\s*(\d+)/]},
+  {key:'book',label:'读书',icon:'📚',unit:'页',patterns:[/看了?(\d+)\s*页/,/读了?(\d+)\s*页/,/(\d+)\s*页书/]},
+  {key:'write',label:'写作',icon:'✍️',unit:'字',patterns:[/写了?(\d+)\s*字/,/(\d+)\s*字/]},
+  {key:'save',label:'存钱',icon:'💰',unit:'元',patterns:[/存了?(\d+)\s*[块元]/,/存钱\s*(\d+)/,/存\s*(\d+)\s*[块元]/]},
+  {key:'exercise',label:'运动',icon:'💪',unit:'分钟',patterns:[/运动了?(\d+)\s*分[钟]/,/锻炼了?(\d+)\s*分[钟]/,/(\d+)\s*分[钟].*[运动锻炼]/]},
+  {key:'pushup',label:'俯卧撑',icon:'🏋️',unit:'个',patterns:[/(\d+)\s*个?\s*俯卧撑/,/俯卧撑\s*(\d+)/]},
+  {key:'run',label:'跑步',icon:'🏃',unit:'km',patterns:[/跑了?(\d+)\s*公?里/,/跑步\s*(\d+)/,/(\d+)\s*km/i]},
+  {key:'water',label:'喝水',icon:'💧',unit:'杯',patterns:[/喝[了]?(\d+)\s*[杯次]/,/(\d+)\s*杯水/]},
+  {key:'meditate',label:'冥想',icon:'🧘',unit:'分钟',patterns:[/冥想[了]?(\d+)\s*分[钟]/,/(\d+)\s*分[钟].*冥想/]},
+  {key:'squat',label:'深蹲',icon:'🦵',unit:'个',patterns:[/(\d+)\s*个?\s*深蹲/,/深蹲\s*(\d+)/]},
+  {key:'read_time',label:'阅读时长',icon:'⏱️',unit:'分钟',patterns:[/看了?(\d+)\s*分[钟].*[书读]/,/读了?(\d+)\s*分[钟]/,/阅读\s*(\d+)\s*分[钟]/]},
+];
+function extractTrack(title){
+  const results=[];
+  for(const rule of TRACK_RULES){
+    for(const pat of rule.patterns){
+      const m=title.match(pat);
+      if(m){
+        const val=parseInt(m[1]);
+        if(val>0){results.push({key:rule.key,val:val});break}
+      }
+    }
+  }
+  return results;
+}
+function applyTrack(task,isComplete){
+  if(isComplete){
+    const extracted=extractTrack(task.title||'');
+    if(extracted.length>0){
+      task._tracked=extracted;
+      extracted.forEach(e=>{
+        ud.trackStats[e.key]=(ud.trackStats[e.key]||0)+e.val;
+      });
+    }
+  }else{
+    if(task._tracked&&Array.isArray(task._tracked)){
+      task._tracked.forEach(e=>{
+        ud.trackStats[e.key]=Math.max(0,(ud.trackStats[e.key]||0)-e.val);
+      });
+    }
+  }
 }
 async function kvUpload(){
   if(_uploading)return;
@@ -581,12 +627,14 @@ function toggleTask(id){
       if(!last)ud.streak=1;else{const diff=Math.floor((new Date(td)-last)/86400000);ud.streak=diff===1?ud.streak+1:1}
     }
     ud.lastActive=td;if(ud.streak>ud.maxStreak)ud.maxStreak=ud.streak;
+    applyTrack(t,true);
     const el=document.querySelector('[data-tid="'+id+'"] .chk');
     if(el){const r=el.getBoundingClientRect();spawnCfx(r.left+r.width/2,r.top+r.height/2);xpPop(r.left+r.width/2,r.top)}
     checkBadges();
   }else{
     ud.xp=Math.max(0,ud.xp-20);ud.totalCompleted=Math.max(0,ud.totalCompleted-1);
     if(ud.dailyLog[td])ud.dailyLog[td].completed=Math.max(0,ud.dailyLog[td].completed-1);
+    applyTrack(t,false);
   }
   saveData();renderAll();
 }
@@ -832,6 +880,27 @@ function renderStats(){
     html+='<div class="flex-1 flex flex-col items-center gap-1"><span class="text-[10px] text-gray-400">'+count+'</span><div class="w-full rounded-sm '+(isToday?'bg-[#8B5CF6]':'bg-[#3F3F46]')+'" style="height:'+h+'px"></div><span class="text-[10px] text-gray-500">'+days[d.getDay()]+'</span></div>';
   }
   chart.innerHTML=html;
+  renderTrackStats();
+}
+function renderTrackStats(){
+  const container=document.getElementById('trackStats');
+  if(!container)return;
+  const ts=ud.trackStats||{};
+  const active=TRACK_RULES.filter(r=>ts[r.key]&&ts[r.key]>0);
+  if(active.length===0){
+    container.innerHTML='<div class="text-center py-6 text-gray-500 text-sm">完成包含数字的任务（如"背了50个单词"、"存了100块钱"）会自动统计</div>';
+    return;
+  }
+  let html='<div class="grid grid-cols-2 md:grid-cols-3 gap-3">';
+  active.forEach(r=>{
+    const val=ts[r.key]||0;
+    html+='<div class="bg-[#18181B] rounded-xl p-4 flex items-center gap-3">'+
+      '<span class="text-2xl">'+r.icon+'</span>'+
+      '<div><div class="text-xl font-bold" style="color:var(--ac)">'+val+'</div>'+
+      '<div class="text-xs text-gray-500">'+r.label+'（'+r.unit+'）</div></div></div>';
+  });
+  html+='</div>';
+  container.innerHTML=html;
 }
 function renderGoals(){
   const list=document.getElementById('goalList'),empty=document.getElementById('emptyGoals');
@@ -1232,5 +1301,6 @@ if(document.readyState==='loading'){
   initApp();
 }
 // Fallback: re-render on window load
-window.addEventListener('load',()=>{setTimeout(()=>{renderAll();renderDock()},100)});</script></body>
+window.addEventListener('load',()=>{setTimeout(()=>{renderAll();renderDock()},100)});</script>
+</body>
 </html>

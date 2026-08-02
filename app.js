@@ -69,16 +69,81 @@ let _uploading=false;
 let _lastCloudVer=0;
 function today(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 function today_fmt(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
-function defaultData(){return{tasks:[],xp:0,totalCompleted:0,streak:0,maxStreak:0,badges:[],customBadges:[],dailyLog:{},lastActive:null,profile:{name:'我',avatar:'🐱'},dock:['today','calendar','history','badges','goals'],routines:[],goals:[],goalLogs:{},lastRoutineGen:null,theme:'purple',createdAt:today(),_v:3}}
+function defaultData(){return{tasks:[],xp:0,totalCompleted:0,streak:0,maxStreak:0,badges:[],customBadges:[],dailyLog:{},lastActive:null,profile:{name:'我',avatar:'🐱'},dock:['today','calendar','history','badges','goals'],routines:[],goals:[],goalLogs:{},lastRoutineGen:null,theme:'purple',createdAt:today(),trackStats:{},_v:3}}
 function mergeData(d){
   const def=defaultData();
-  return{...def,...d,profile:{...def.profile,...(d.profile||{})},dock:d.dock||def.dock,routines:d.routines||[],goals:d.goals||[],goalLogs:d.goalLogs||{},lastRoutineGen:d.lastRoutineGen||null,theme:d.theme||'purple',_v:3};
+  return{...def,...d,profile:{...def.profile,...(d.profile||{})},dock:d.dock||def.dock,routines:d.routines||[],goals:d.goals||[],goalLogs:d.goalLogs||{},lastRoutineGen:d.lastRoutineGen||null,theme:d.theme||'purple',trackStats:d.trackStats||{},_v:3};
+}
+// ==================== TRACK RULES (auto-extract stats from task titles) ====================
+const TRACK_RULES=[
+  {key:'words',label:'背单词',icon:'📖',unit:'个',patterns:[/背了?(\d+)\s*个?\s*单词/,/(\d+)\s*个?\s*单词/,/单词\s*(\d+)/]},
+  {key:'book',label:'读书',icon:'📚',unit:'页',patterns:[/看了?(\d+)\s*页/,/读了?(\d+)\s*页/,/(\d+)\s*页书/]},
+  {key:'write',label:'写作',icon:'✍️',unit:'字',patterns:[/写了?(\d+)\s*字/,/(\d+)\s*字/]},
+  {key:'save',label:'存钱',icon:'💰',unit:'元',patterns:[/存了?(\d+)\s*[块元]/,/存钱\s*(\d+)/,/存\s*(\d+)\s*[块元]/]},
+  {key:'exercise',label:'运动',icon:'💪',unit:'分钟',patterns:[/运动了?(\d+)\s*分[钟]/,/锻炼了?(\d+)\s*分[钟]/,/(\d+)\s*分[钟].*[运动锻炼]/]},
+  {key:'pushup',label:'俯卧撑',icon:'🏋️',unit:'个',patterns:[/(\d+)\s*个?\s*俯卧撑/,/俯卧撑\s*(\d+)/]},
+  {key:'run',label:'跑步',icon:'🏃',unit:'km',patterns:[/跑了?(\d+)\s*公?里/,/跑步\s*(\d+)/,/(\d+)\s*km/i]},
+  {key:'water',label:'喝水',icon:'💧',unit:'杯',patterns:[/喝[了]?(\d+)\s*[杯次]/,/(\d+)\s*杯水/]},
+  {key:'meditate',label:'冥想',icon:'🧘',unit:'分钟',patterns:[/冥想[了]?(\d+)\s*分[钟]/,/(\d+)\s*分[钟].*冥想/]},
+  {key:'squat',label:'深蹲',icon:'🦵',unit:'个',patterns:[/(\d+)\s*个?\s*深蹲/,/深蹲\s*(\d+)/]},
+  {key:'read_time',label:'阅读时长',icon:'⏱️',unit:'分钟',patterns:[/看了?(\d+)\s*分[钟].*[书读]/,/读了?(\d+)\s*分[钟]/,/阅读\s*(\d+)\s*分[钟]/]},
+];
+function extractTrack(title){
+  const results=[];
+  for(const rule of TRACK_RULES){
+    for(const pat of rule.patterns){
+      const m=title.match(pat);
+      if(m){
+        const val=parseInt(m[1]);
+        if(val>0){results.push({key:rule.key,val:val});break}
+      }
+    }
+  }
+  return results;
+}
+function applyTrack(task,isComplete){
+  if(isComplete){
+    const extracted=extractTrack(task.title||'');
+    if(extracted.length>0){
+      task._tracked=extracted;
+      extracted.forEach(e=>{
+        ud.trackStats[e.key]=(ud.trackStats[e.key]||0)+e.val;
+      });
+    }
+  }else{
+    if(task._tracked&&Array.isArray(task._tracked)){
+      task._tracked.forEach(e=>{
+        ud.trackStats[e.key]=Math.max(0,(ud.trackStats[e.key]||0)-e.val);
+      });
+    }
+  }
 }
 async function kvUpload(){
   if(_uploading)return;
   _uploading=true;
   try{
-    // Simple: just write local data. No merge. Last write wins.
+    // PROTECTION: Don't upload if local is empty but cloud might have data
+    if(ud.tasks.length===0){
+      // Check cloud first
+      try{
+        const cr=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data?_='+Date.now());
+        if(cr.ok){
+          const text=await cr.text();
+          if(text){
+            const cd=JSON.parse(text);
+            if(cd&&Array.isArray(cd.tasks)&&cd.tasks.length>0){
+              // Cloud has data! Don't overwrite. Download instead.
+              ud=mergeData(cd);
+              _lastCloudVer=Math.max(cd._ver||0,Date.now());
+              renderAll();renderDock();
+              _showSync('fail','本地为空已从云端恢复');
+              _uploading=false;
+              return;
+            }
+          }
+        }
+      }catch(e){}
+    }
     const toSave={...ud,_ver:Date.now()};
     const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(toSave)});
     if(r.ok){
@@ -88,11 +153,30 @@ async function kvUpload(){
   }catch(e){_showSync('fail','↑错误: '+e.message)}
   _uploading=false;
 }
+let _rateLimitReset=0;
 async function kvDownload(){
+  // If rate limited, wait until reset time
+  if(_rateLimitReset>0){
+    if(Date.now()<_rateLimitReset)return;
+    _rateLimitReset=0;
+  }
   try{
     const r=await fetch('https://kvdb.io/'+KVDB_BUCKET+'/data?_='+Date.now());
-    if(!r.ok)return;
-    const cloud=await r.json();
+    if(!r.ok){
+      if(r.status===429){
+        const reset=r.headers.get('x-ratelimit-reset');
+        _rateLimitReset=reset?parseInt(reset)*1000:Date.now()+30000;
+        const wait=Math.max(0,Math.ceil((_rateLimitReset-Date.now())/1000));
+        _showSync('fail','限流，'+wait+'秒后自动恢复');
+        // Schedule retry after reset
+        setTimeout(kvDownload,Math.min(wait*1000,60000));
+        return;
+      }
+      return;
+    }
+    const text=await r.text();
+    if(!text)return;
+    const cloud=JSON.parse(text);
     if(!cloud||!Array.isArray(cloud.tasks))return;
     if(cloud._ver!==undefined&&cloud._ver<=_lastCloudVer)return;
     ud=mergeData(cloud);
@@ -125,8 +209,8 @@ function saveData(){
   clearTimeout(_saveTimer);
   _saveTimer=setTimeout(kvUpload,200);
 }
-// Poll every 1s
-setInterval(kvDownload,1000);
+// Poll every 5s to avoid kvdb 429 rate limit
+setInterval(kvDownload,5000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')kvDownload()});
 window.addEventListener('beforeunload',()=>{clearTimeout(_saveTimer);if(!_uploading)kvUpload()});
 BC.onmessage=e=>{try{const d=JSON.parse(e.data);if(d&&Array.isArray(d.tasks)){ud=mergeData(d);applyTheme(ud.theme||'purple');renderAll();renderDock()}}catch(e){}};
@@ -156,12 +240,14 @@ function toggleTask(id){
       if(!last)ud.streak=1;else{const diff=Math.floor((new Date(td)-last)/86400000);ud.streak=diff===1?ud.streak+1:1}
     }
     ud.lastActive=td;if(ud.streak>ud.maxStreak)ud.maxStreak=ud.streak;
+    applyTrack(t,true);
     const el=document.querySelector('[data-tid="'+id+'"] .chk');
     if(el){const r=el.getBoundingClientRect();spawnCfx(r.left+r.width/2,r.top+r.height/2);xpPop(r.left+r.width/2,r.top)}
     checkBadges();
   }else{
     ud.xp=Math.max(0,ud.xp-20);ud.totalCompleted=Math.max(0,ud.totalCompleted-1);
     if(ud.dailyLog[td])ud.dailyLog[td].completed=Math.max(0,ud.dailyLog[td].completed-1);
+    applyTrack(t,false);
   }
   saveData();renderAll();
 }
@@ -407,6 +493,27 @@ function renderStats(){
     html+='<div class="flex-1 flex flex-col items-center gap-1"><span class="text-[10px] text-gray-400">'+count+'</span><div class="w-full rounded-sm '+(isToday?'bg-[#8B5CF6]':'bg-[#3F3F46]')+'" style="height:'+h+'px"></div><span class="text-[10px] text-gray-500">'+days[d.getDay()]+'</span></div>';
   }
   chart.innerHTML=html;
+  renderTrackStats();
+}
+function renderTrackStats(){
+  const container=document.getElementById('trackStats');
+  if(!container)return;
+  const ts=ud.trackStats||{};
+  const active=TRACK_RULES.filter(r=>ts[r.key]&&ts[r.key]>0);
+  if(active.length===0){
+    container.innerHTML='<div class="text-center py-6 text-gray-500 text-sm">完成包含数字的任务（如"背了50个单词"、"存了100块钱"）会自动统计</div>';
+    return;
+  }
+  let html='<div class="grid grid-cols-2 md:grid-cols-3 gap-3">';
+  active.forEach(r=>{
+    const val=ts[r.key]||0;
+    html+='<div class="bg-[#18181B] rounded-xl p-4 flex items-center gap-3">'+
+      '<span class="text-2xl">'+r.icon+'</span>'+
+      '<div><div class="text-xl font-bold" style="color:var(--ac)">'+val+'</div>'+
+      '<div class="text-xs text-gray-500">'+r.label+'（'+r.unit+'）</div></div></div>';
+  });
+  html+='</div>';
+  container.innerHTML=html;
 }
 function renderGoals(){
   const list=document.getElementById('goalList'),empty=document.getElementById('emptyGoals');
@@ -474,18 +581,53 @@ function delRoutine(i){ud.routines.splice(i,1);saveData();showRoutineModal();}
 function openDetail(id){
   const t=ud.tasks.find(t=>t.id===id);if(!t)return;
   const c=CATS.find(x=>x.id===t.category)||CATS[0];
-  const isMob=window.innerWidth<768;
-  if(isMob){document.getElementById('detailSheet').classList.remove('hidden');document.getElementById('detailSheet').classList.add('flex');}
+  // Show detail sheet on ALL devices (not just mobile)
+  document.getElementById('detailSheet').classList.remove('hidden');
+  document.getElementById('detailSheet').classList.add('flex');
   const html='<div class="space-y-3">'+
     '<div><label class="text-xs text-gray-500 mb-1 block">任务标题</label><input type="text" value="'+t.title.replace(/"/g,'&quot;')+'" onchange="updTask('+t.id+',{title:this.value})" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2.5 text-sm text-white focus:border-[#8B5CF6] outline-none"></div>'+
     '<div><label class="text-xs text-gray-500 mb-1 block">分类</label><div class="flex flex-wrap gap-1.5" id="dtCats">'+CATS.map(c=>'<button onclick="updTask('+t.id+',{category:\''+c.id+'\'});detailSelCat(this)" class="dt-cat flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border '+(t.category===c.id?'border-[#8B5CF6] bg-[#8B5CF6]/10 text-[#8B5CF6]':'border-[#3F3F46] bg-[#09090B] text-gray-500')+'">'+c.icon+' '+c.label+'</button>').join('')+'</div></div>'+
     '<div><label class="text-xs text-gray-500 mb-1 block">优先级</label><div class="flex gap-1.5" id="dtPri"><button onclick="updTask('+t.id+',{priority:\'high\'});detailSelPri(this,\'high\')" class="dt-pri flex-1 py-2 rounded-lg text-xs font-semibold border '+(t.priority==='high'?'border-red-500 bg-red-500/10 text-red-400':'border-[#3F3F46] bg-[#09090B] text-gray-500')+'">🔴 高</button><button onclick="updTask('+t.id+',{priority:\'mid\'});detailSelPri(this,\'mid\')" class="dt-pri flex-1 py-2 rounded-lg text-xs font-semibold border '+(t.priority==='mid'?'border-[#8B5CF6] bg-[#8B5CF6]/10 text-[#8B5CF6]':'border-[#3F3F46] bg-[#09090B] text-gray-500')+'">🟡 中</button><button onclick="updTask('+t.id+',{priority:\'low\'});detailSelPri(this,\'low\')" class="dt-pri flex-1 py-2 rounded-lg text-xs font-semibold border '+(t.priority==='low'?'border-blue-400 bg-blue-400/10 text-blue-400':'border-[#3F3F46] bg-[#09090B] text-gray-500')+'">⚪ 低</button></div></div>'+
     '<div class="flex gap-2"><div class="flex-1"><label class="text-xs text-gray-500 mb-1 block">日期</label><input type="date" value="'+t.createdAt+'" onchange="updTask('+t.id+',{createdAt:this.value})" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2.5 text-sm text-white"></div><div class="flex-1"><label class="text-xs text-gray-500 mb-1 block">时间</label><input type="time" value="'+t.time+'" onchange="updTask('+t.id+',{time:this.value})" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2.5 text-sm text-white"></div></div>'+
     '</div>'+
-    '<div class="mt-5 pt-3 border-t border-[#27272A]"><button onclick="delTask('+t.id+')" class="w-full text-sm text-red-400 py-2">删除任务</button></div>';
+    '<div class="mt-3 pt-3 border-t border-[#27272A]">'+
+      '<label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="dtRepeat" onchange="toggleDetailRepeat('+t.id+')" class="w-4 h-4 rounded accent-[#8B5CF6]"><span class="text-sm text-gray-300">设为重复任务</span></label>'+
+      '<div id="dtRepeatRange" class="hidden mt-2 flex gap-2">'+
+        '<div class="flex-1"><label class="text-xs text-gray-500 mb-1 block">从</label><input type="date" id="dtRepStart" value="'+t.createdAt+'" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2 text-sm text-white"></div>'+
+        '<div class="flex-1"><label class="text-xs text-gray-500 mb-1 block">到</label><input type="date" id="dtRepEnd" value="'+t.createdAt+'" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2 text-sm text-white"></div>'+
+      '</div>'+
+      '<button id="dtRepBtn" onclick="applyDetailRepeat('+t.id+')" class="hidden w-full mt-2 py-2 rounded-lg text-sm font-semibold bg-[#8B5CF6] text-white">应用到日期范围</button>'+
+    '</div>'+
+    '<div class="mt-3 pt-3 border-t border-[#27272A]"><button onclick="delTask('+t.id+')" class="w-full text-sm text-red-400 py-2">删除任务</button></div>';
   document.getElementById('detailBody').innerHTML=html;
 }
 function closeDetail(){document.getElementById('detailSheet').classList.add('hidden');document.getElementById('detailSheet').classList.remove('flex')}
+function toggleDetailRepeat(tid){
+  const chk=document.getElementById('dtRepeat');
+  const range=document.getElementById('dtRepeatRange');
+  const btn=document.getElementById('dtRepBtn');
+  if(chk.checked){range.classList.remove('hidden');btn.classList.remove('hidden')}
+  else{range.classList.add('hidden');btn.classList.add('hidden')}
+}
+function applyDetailRepeat(tid){
+  const t=ud.tasks.find(t=>t.id===tid);if(!t)return;
+  const start=document.getElementById('dtRepStart').value;
+  const end=document.getElementById('dtRepEnd').value;
+  if(!start||!end){alert('请选择日期范围');return}
+  const s=new Date(start),e=new Date(end);
+  let added=0;
+  for(let d=new Date(s);d<=e;d.setDate(d.getDate()+1)){
+    const ds=today_fmt(d);
+    if(ds===t.createdAt)continue; // skip current date
+    const exists=ud.tasks.some(x=>x.createdAt===ds&&x.title===t.title);
+    if(!exists){
+      ud.tasks.push({id:Date.now()+Math.random(),title:t.title,category:t.category,time:t.time||'',priority:t.priority||'mid',completed:false,createdAt:ds,completedAt:null,linkedGoal:null});
+      added++;
+    }
+  }
+  saveData();renderAll();
+  alert('已复制到'+added+'天');
+}
 function detailSelCat(btn){
   document.querySelectorAll('.dt-cat').forEach(b=>{b.className=b.className.replace(/border-\[#8B5CF6\] bg-\[#8B5CF6\]\/10 text-\[#8B5CF6\]/g,'border-[#3F3F46] bg-[#09090B] text-gray-500')});
   btn.className=btn.className.replace(/border-\[#3F3F46\] bg-\[#09090B\] text-gray-500/g,'border-[#8B5CF6] bg-[#8B5CF6]/10 text-[#8B5CF6]');
@@ -754,16 +896,17 @@ function xpPop(x,y){const el=document.createElement('div');el.className='xp-floa
 // ==================== INIT ====================
 const deskInputHtml='<div class="desktop-only px-3 pt-3 pb-2"><div class="flex gap-2"><input id="deskInput" type="text" placeholder="+ 新任务" class="flex-1 bg-[#18181B] border border-[#3F3F46] rounded-lg px-3 py-2 text-sm text-white focus:border-[#8B5CF6] outline-none"><button onclick="triggerAdd(\'deskInput\')" class="bg-[#8B5CF6] text-white px-3 rounded-lg text-sm font-bold">+</button></div></div>';
 async function initApp(){
-  applyTheme(ud.theme||'purple');
   // Load from kvdb FIRST, before any rendering
-  await kvDownload();
-  // Now render with cloud data
+  try{await kvDownload()}catch(e){console.error('kvDownload error:',e)}
+  // kvDownload already calls renderAll() on success, but force re-render
+  applyTheme(ud.theme||'purple');
   try{renderAll();renderDock();setView('today')}catch(e){console.error('render error:',e)}
   const tvd=document.getElementById('todayViewDate');if(tvd)tvd.value=td;
   const sb=document.querySelector('.desktop-only nav');
   if(sb){const wrap=document.createElement('div');wrap.innerHTML=deskInputHtml;sb.insertBefore(wrap.firstChild,sb.firstChild)}
-  // Generate routine tasks based on latest data
   try{genRoutineTasks()}catch(e){console.error('genRoutine error:',e)}
+  // Extra safety: force render after a short delay to ensure DOM is ready
+  setTimeout(()=>{try{renderAll();renderDock()}catch(e){}},500);
 }
 if(document.readyState==='loading'){
   document.addEventListener('DOMContentLoaded',initApp);
