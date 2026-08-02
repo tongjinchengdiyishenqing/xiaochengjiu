@@ -76,17 +76,17 @@ function mergeData(d){
 }
 // ==================== TRACK RULES (auto-extract stats from task titles) ====================
 const TRACK_RULES=[
-  {key:'words',label:'背单词',icon:'📖',unit:'个',patterns:[/背了?(\d+)\s*个?\s*单词/,/(\d+)\s*个?\s*单词/,/单词\s*(\d+)/]},
-  {key:'book',label:'读书',icon:'📚',unit:'页',patterns:[/看了?(\d+)\s*页/,/读了?(\d+)\s*页/,/(\d+)\s*页书/]},
-  {key:'write',label:'写作',icon:'✍️',unit:'字',patterns:[/写了?(\d+)\s*字/,/(\d+)\s*字/]},
-  {key:'save',label:'存钱',icon:'💰',unit:'元',patterns:[/存了?(\d+)\s*[块元]/,/存钱\s*(\d+)/,/存\s*(\d+)\s*[块元]/]},
-  {key:'exercise',label:'运动',icon:'💪',unit:'分钟',patterns:[/运动了?(\d+)\s*分[钟]/,/锻炼了?(\d+)\s*分[钟]/,/(\d+)\s*分[钟].*[运动锻炼]/]},
+  {key:'words',label:'背单词',icon:'📖',unit:'个',patterns:[/背了?\s*(\d+)\s*个?\s*.*?单词/,/(\d+)\s*个?\s*.*?单词/,/单词\s*(\d+)/]},
+  {key:'book',label:'读书',icon:'📚',unit:'页',patterns:[/看了?\s*(\d+)\s*页/,/读了?\s*(\d+)\s*页/,/(\d+)\s*页.*书/]},
+  {key:'write',label:'写作',icon:'✍️',unit:'字',patterns:[/写了?\s*(\d+)\s*字/,/(\d+)\s*字/]},
+  {key:'save',label:'存钱',icon:'💰',unit:'元',patterns:[/存了?\s*(\d+)\s*[块元]/,/存钱\s*(\d+)/,/存\s*(\d+)\s*[块元]/]},
+  {key:'exercise',label:'运动',icon:'💪',unit:'分钟',patterns:[/运动了?\s*(\d+)\s*分[钟]/,/锻炼了?\s*(\d+)\s*分[钟]/,/(\d+)\s*分[钟].*[运动锻炼]/]},
   {key:'pushup',label:'俯卧撑',icon:'🏋️',unit:'个',patterns:[/(\d+)\s*个?\s*俯卧撑/,/俯卧撑\s*(\d+)/]},
-  {key:'run',label:'跑步',icon:'🏃',unit:'km',patterns:[/跑了?(\d+)\s*公?里/,/跑步\s*(\d+)/,/(\d+)\s*km/i]},
-  {key:'water',label:'喝水',icon:'💧',unit:'杯',patterns:[/喝[了]?(\d+)\s*[杯次]/,/(\d+)\s*杯水/]},
-  {key:'meditate',label:'冥想',icon:'🧘',unit:'分钟',patterns:[/冥想[了]?(\d+)\s*分[钟]/,/(\d+)\s*分[钟].*冥想/]},
+  {key:'run',label:'跑步',icon:'🏃',unit:'km',patterns:[/跑了?\s*(\d+)\s*公?里/,/跑步\s*(\d+)/,/(\d+)\s*km/i]},
+  {key:'water',label:'喝水',icon:'💧',unit:'杯',patterns:[/喝[了]?\s*(\d+)\s*[杯次]/,/(\d+)\s*杯.*水/]},
+  {key:'meditate',label:'冥想',icon:'🧘',unit:'分钟',patterns:[/冥想[了]?\s*(\d+)\s*分[钟]/,/(\d+)\s*分[钟].*冥想/]},
   {key:'squat',label:'深蹲',icon:'🦵',unit:'个',patterns:[/(\d+)\s*个?\s*深蹲/,/深蹲\s*(\d+)/]},
-  {key:'read_time',label:'阅读时长',icon:'⏱️',unit:'分钟',patterns:[/看了?(\d+)\s*分[钟].*[书读]/,/读了?(\d+)\s*分[钟]/,/阅读\s*(\d+)\s*分[钟]/]},
+  {key:'read_time',label:'阅读时长',icon:'⏱️',unit:'分钟',patterns:[/看了?\s*(\d+)\s*分[钟].*[书读]/,/读了?\s*(\d+)\s*分[钟]/,/阅读\s*(\d+)\s*分[钟]/]},
 ];
 function extractTrack(title){
   const results=[];
@@ -265,6 +265,27 @@ function genRoutineTasks(){
   });
   ud.lastRoutineGen=td;
   if(added)saveData();
+}
+function rebuildTrackStats(){
+  // Recalculate trackStats from all completed tasks
+  ud.trackStats={};
+  let changed=false;
+  ud.tasks.forEach(t=>{
+    if(t.completed){
+      const extracted=extractTrack(t.title||'');
+      if(extracted.length>0){
+        // Check if task was already tracked with same values
+        if(!t._tracked||JSON.stringify(t._tracked)!==JSON.stringify(extracted)){
+          t._tracked=extracted;
+          changed=true;
+        }
+        extracted.forEach(e=>{
+          ud.trackStats[e.key]=(ud.trackStats[e.key]||0)+e.val;
+        });
+      }
+    }
+  });
+  if(changed)saveData();
 }
 
 // ==================== BADGES ====================
@@ -900,6 +921,7 @@ async function initApp(){
   try{await kvDownload()}catch(e){console.error('kvDownload error:',e)}
   // kvDownload already calls renderAll() on success, but force re-render
   applyTheme(ud.theme||'purple');
+  try{rebuildTrackStats()}catch(e){console.error('rebuildTrack error:',e)}
   try{renderAll();renderDock();setView('today')}catch(e){console.error('render error:',e)}
   const tvd=document.getElementById('todayViewDate');if(tvd)tvd.value=td;
   const sb=document.querySelector('.desktop-only nav');
