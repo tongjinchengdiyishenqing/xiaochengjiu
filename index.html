@@ -220,26 +220,31 @@ input,select,textarea{font-family:inherit;outline:none;border:none}
 
       <!-- TRACKER -->
       <div id="v-tracker" class="vp p-4 md:p-6 max-w-2xl mx-auto hidden">
-        <div class="flex items-center justify-between mb-4">
-          <h1 class="text-lg md:text-xl font-bold">习惯追踪</h1>
-          <button onclick="showAddCatModal()" class="text-xs bg-[#8B5CF6] text-white px-3 py-1.5 rounded-lg font-semibold">+ 新分类</button>
+        <!-- Main View -->
+        <div id="trackerMain">
+          <div class="flex items-center justify-between mb-4">
+            <h1 class="text-lg md:text-xl font-bold">习惯追踪</h1>
+            <button onclick="showAddCatModal()" class="text-xs bg-[#8B5CF6] text-white px-3 py-1.5 rounded-lg font-semibold">+ 新分类</button>
+          </div>
+          <!-- Period Tabs -->
+          <div class="flex gap-2 mb-4">
+            <button id="tabWeek" onclick="setTrackerPeriod('week')" class="flex-1 py-2 rounded-lg text-sm font-bold bg-[#8B5CF6] text-white">周</button>
+            <button id="tabMonth" onclick="setTrackerPeriod('month')" class="flex-1 py-2 rounded-lg text-sm font-bold bg-[#27272A] text-gray-400">月</button>
+            <button id="tabYear" onclick="setTrackerPeriod('year')" class="flex-1 py-2 rounded-lg text-sm font-bold bg-[#27272A] text-gray-400">年</button>
+          </div>
+          <!-- Period Navigation -->
+          <div class="flex items-center justify-between mb-5">
+            <button onclick="trackerNav(-1)" class="px-3 py-1.5 rounded-lg bg-[#18181B] text-gray-400 text-sm">‹ 上一<span id="trackerNavLabel">周</span></button>
+            <span id="trackerPeriodLabel" class="text-sm font-semibold text-gray-300"></span>
+            <button onclick="trackerNav(1)" class="px-3 py-1.5 rounded-lg bg-[#18181B] text-gray-400 text-sm">下一<span id="trackerNavLabel2">周</span> ›</button>
+          </div>
+          <!-- Category Stats Cards -->
+          <div id="trackerStats" class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6"></div>
+          <!-- Bar Charts -->
+          <div id="trackerCharts"></div>
         </div>
-        <!-- Period Tabs -->
-        <div class="flex gap-2 mb-4">
-          <button id="tabWeek" onclick="setTrackerPeriod('week')" class="flex-1 py-2 rounded-lg text-sm font-bold bg-[#8B5CF6] text-white">周</button>
-          <button id="tabMonth" onclick="setTrackerPeriod('month')" class="flex-1 py-2 rounded-lg text-sm font-bold bg-[#27272A] text-gray-400">月</button>
-          <button id="tabYear" onclick="setTrackerPeriod('year')" class="flex-1 py-2 rounded-lg text-sm font-bold bg-[#27272A] text-gray-400">年</button>
-        </div>
-        <!-- Period Navigation -->
-        <div class="flex items-center justify-between mb-5">
-          <button onclick="trackerNav(-1)" class="px-3 py-1.5 rounded-lg bg-[#18181B] text-gray-400 text-sm">‹ 上一<span id="trackerNavLabel">周</span></button>
-          <span id="trackerPeriodLabel" class="text-sm font-semibold text-gray-300"></span>
-          <button onclick="trackerNav(1)" class="px-3 py-1.5 rounded-lg bg-[#18181B] text-gray-400 text-sm">下一<span id="trackerNavLabel2">周</span> ›</button>
-        </div>
-        <!-- Category Stats Cards -->
-        <div id="trackerStats" class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6"></div>
-        <!-- Bar Charts -->
-        <div id="trackerCharts"></div>
+        <!-- Detail View -->
+        <div id="trackerDetail" class="hidden"></div>
       </div>
 
       <!-- GOALS -->
@@ -426,6 +431,7 @@ input,select,textarea{font-family:inherit;outline:none;border:none}
     </div>
   </div>
 </div>
+
 
 
 
@@ -782,6 +788,12 @@ function fmtDate(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2
 function resetTodayView(){_todayViewDate=null;renderToday()}
 function renderToday(){
   const viewDate=getTodayViewDate();
+  const fCatEl=document.getElementById('fCat');
+  const prevF=fCatEl?fCatEl.value:'all';
+  if(fCatEl){
+    fCatEl.innerHTML='<option value="all">全部</option>'+getAllCats().map(c=>'<option value="'+c.id+'">'+c.icon+' '+c.label+'</option>').join('');
+    fCatEl.value=prevF;
+  }
   const f=document.getElementById('fCat').value,s=document.getElementById('fSort').value;
   const vd=viewDate===td;
   if(document.getElementById('todayViewDate').value!==viewDate)document.getElementById('todayViewDate').value=viewDate;
@@ -800,7 +812,7 @@ function renderToday(){
   if(!tasks.length){list.innerHTML='';empty.classList.remove('hidden');return}
   empty.classList.add('hidden');
   list.innerHTML=tasks.map(t=>{
-    const c=CATS.find(x=>x.id===t.category)||CATS[0];
+    const c=getCat(t.category);
     const pc={high:'text-red-400',mid:'text-yellow-400',low:'text-gray-500'};
     const routineTag=t.fromRoutine?'<span class="text-[10px] bg-[#27272A] text-gray-400 px-1.5 py-0.5 rounded ml-1.5">例行</span>':'';
     return '<div class="task-enter group flex items-center gap-3 px-3 py-3 rounded-xl bg-[#18181B] hover:bg-[#27272A] active:bg-[#27272A] cursor-pointer '+(t.completed?'opacity-40':'')+'" data-tid="'+t.id+'" onclick="openDetail('+t.id+')">'+
@@ -817,7 +829,7 @@ function renderTimeline(){
   if(!tasks.length){c.innerHTML='';c.style.display='none';e.classList.remove('hidden');return}
   e.classList.add('hidden');c.style.display='block';
   c.innerHTML='<div class="absolute left-[9px] top-2 bottom-2 w-px bg-[#3F3F46]"></div>'+tasks.map(t=>{
-    const cat=CATS.find(x=>x.id===t.category)||CATS[0];
+    const cat=getCat(t.category);
     return '<div class="relative pl-5 pb-5"><button class="absolute left-0 top-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center '+(t.completed?'bg-[#8B5CF6] border-[#8B5CF6]':'border-[#3F3F46]')+'" onclick="toggleTask('+t.id+')">'+(t.completed?'<svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>':'')+'</button>'+
     '<div class="bg-[#18181B] rounded-lg px-3 py-2 '+(t.completed?'opacity-40':'')+'"><div class="flex items-center justify-between"><span class="text-sm '+(t.completed?'line-through text-gray-500':'text-white')+'">'+t.title+'</span><span class="text-xs font-mono" style="color:var(--ac)">'+t.time+'</span></div><span class="text-xs text-gray-500">'+cat.icon+' '+cat.label+'</span></div></div>';
   }).join('');
@@ -862,7 +874,7 @@ function showCalDay(ds){
     return;
   }
   el.innerHTML='<div class="bg-[#18181B] rounded-xl p-4 mt-2"><div class="flex items-center justify-between mb-2"><div class="text-xs text-gray-500">'+ds+(ds===td?' (今天)':'')+'</div><div class="flex gap-1"><button onclick="quickAddToDay(\''+ds+'\')" class="text-xs bg-[#27272A] text-gray-400 px-2 py-1 rounded hover:text-white">+ 添加</button><button onclick="_calOpenDs=null;document.getElementById(\'calDetail\').classList.add(\'hidden\')" class="text-xs text-gray-500 px-1 hover:text-white">✕</button></div></div>'+tasks.map(t=>{
-    const c=CATS.find(x=>x.id===t.category)||CATS[0];
+    const c=getCat(t.category);
     return '<div class="group flex items-center gap-2 py-2 border-b border-[#27272A] last:border-0 cursor-pointer" onclick="openDetail('+t.id+')">'+
       '<button class="w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center '+(t.completed?'bg-[#8B5CF6] border-[#8B5CF6]':'border-[#3F3F46]')+'" onclick="event.stopPropagation();toggleTask('+t.id+')">'+(t.completed?'<svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>':'')+'</button>'+
       '<span class="text-sm '+(t.completed?'line-through text-gray-500':'text-white')+' flex-1 min-w-0 truncate">'+t.title+'</span>'+
@@ -880,7 +892,7 @@ function renderHistory(){
   if(!tasks.length){list.innerHTML='';empty.classList.remove('hidden');return}
   empty.classList.add('hidden');
   list.innerHTML=tasks.map(t=>{
-    const c=CATS.find(x=>x.id===t.category)||CATS[0];
+    const c=getCat(t.category);
     return '<div class="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-[#18181B]"><span class="text-sm">'+(t.completed?'✅':'⭕')+'</span><span class="text-sm '+(t.completed?'line-through text-gray-500':'text-white')+'">'+t.title+'</span><span class="text-xs text-gray-500 ml-auto">'+c.icon+' '+c.label+'</span></div>';
   }).join('');
 }
@@ -975,12 +987,17 @@ function renderTrackStats(){
 // ==================== TRACKER (period aggregation + bar chart visualization) ====================
 let trackerPeriod='week';
 let trackerOffset=0;
+let _trackerCatData=[];
 const TRACKER_COLORS=['#8B5CF6','#3B82F6','#F59E0B','#10B981','#EC4899','#F97316','#14B8A6','#6366F1','#A78BFA','#60A5FA','#34D399','#FBBF24','#F472B6','#FB923C'];
 function getAllCats(){
-  // Merge built-in CATS with customCats
+  // Merge built-in CATS with customCats, dedupe by id
+  const seen={};
   const builtin=CATS.map(c=>({id:c.id,label:c.label,icon:c.icon,color:c.c,unit:'',custom:false}));
   const custom=(ud.customCats||[]).map(c=>({id:c.id,label:c.label,icon:c.icon||'📌',color:c.color||'#8B5CF6',unit:c.unit||'',custom:true}));
-  return builtin.concat(custom);
+  return builtin.concat(custom).filter(c=>{if(seen[c.id])return false;seen[c.id]=true;return true});
+}
+function getCat(id){
+  return getAllCats().find(c=>c.id===id)||getAllCats()[0];
 }
 function renderTracker(){
   const range=getPeriodRange(trackerPeriod,trackerOffset);
@@ -1009,15 +1026,17 @@ function renderTracker(){
   const chartsEl=document.getElementById('trackerCharts');
   if(!statsEl||!chartsEl)return;
   // Aggregate per TRACK_RULES
-  const catData=[];
+  _trackerCatData=[];
   TRACK_RULES.forEach((rule,idx)=>{
     let total=0;
     const subVals=new Array(range.subLabels.length).fill(0);
+    const taskList=[];
     tasksInRange.forEach(t=>{
       const extracted=extractTrack(t.title||'');
       extracted.forEach(e=>{
         if(e.key===rule.key){
           total+=e.val;
+          taskList.push({title:t.title,val:e.val,date:t.completedAt});
           const td=new Date(t.completedAt);
           let si=0;
           if(range.subType==='day')si=(td.getDay()+6)%7;
@@ -1027,16 +1046,17 @@ function renderTracker(){
         }
       });
     });
-    if(total>0)catData.push({rule,total,subVals,color:TRACKER_COLORS[idx%TRACKER_COLORS.length]});
+    if(total>0)_trackerCatData.push({rule,total,subVals,taskList,color:TRACKER_COLORS[idx%TRACKER_COLORS.length]});
   });
+  const catData=_trackerCatData;
   if(catData.length===0){
     statsEl.innerHTML='<div class="col-span-full text-center py-12 text-gray-500 text-sm">该期间暂无追踪数据<br><span class="text-xs text-gray-600">完成任务时标题中包含数字会自动统计</span></div>';
     chartsEl.innerHTML='';
     return;
   }
-  // Stats cards
-  statsEl.innerHTML=catData.map(d=>
-    '<div class="bg-[#18181B] rounded-xl p-4">'+
+  // Stats cards (clickable)
+  statsEl.innerHTML=catData.map((d,i)=>
+    '<div class="bg-[#18181B] rounded-xl p-4 cursor-pointer hover:bg-[#27272A] transition-colors" onclick="showTrackerDetail('+i+')">'+
     '<div class="flex items-center gap-2 mb-1"><span class="text-xl">'+d.rule.icon+'</span><span class="text-xs text-gray-500">'+d.rule.label+'</span></div>'+
     '<div class="text-2xl font-bold" style="color:'+d.color+'">'+d.total+'</div>'+
     '<div class="text-[10px] text-gray-500">'+d.rule.unit+'</div></div>'
@@ -1081,6 +1101,53 @@ function getPeriodRange(period,offset){
   const y=now.getFullYear()+offset;
   const start=new Date(y,0,1),end=new Date(y,11,31,23,59,59,999);
   return{start,end,label:y+'年',subLabels:['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'],subType:'month'};
+}
+function showTrackerDetail(idx){
+  const d=_trackerCatData[idx];if(!d)return;
+  const range=getPeriodRange(trackerPeriod,trackerOffset);
+  const main=document.getElementById('trackerMain');
+  const detail=document.getElementById('trackerDetail');
+  if(main)main.classList.add('hidden');
+  if(detail)detail.classList.remove('hidden');
+  // Sort tasks by date descending
+  const tasks=d.taskList.sort((a,b)=>new Date(b.date)-new Date(a.date));
+  let html='<div class="flex items-center gap-3 mb-5">'+
+    '<button onclick="closeTrackerDetail()" class="text-gray-500 text-sm">← 返回</button>'+
+    '<span class="text-2xl">'+d.rule.icon+'</span>'+
+    '<h1 class="text-lg font-bold flex-1">'+d.rule.label+'</h1>'+
+    '<span class="text-sm font-bold" style="color:'+d.color+'">'+d.total+' '+d.rule.unit+'</span></div>';
+  html+='<div class="text-xs text-gray-500 mb-4">'+range.label+' · 共 '+tasks.length+' 条记录</div>';
+  // Bar chart
+  const mx=Math.max(...d.subVals,1);
+  html+='<div class="bg-[#18181B] rounded-xl p-4 mb-4">'+
+    '<div class="flex items-end gap-1 h-28">';
+  d.subVals.forEach((v,i)=>{
+    const h=Math.round((v/mx)*100);
+    html+='<div class="flex-1 flex flex-col items-center justify-end gap-1 min-w-0">'+
+      '<span class="text-[9px] text-gray-400 leading-none">'+(v>0?v:'')+'</span>'+
+      '<div class="w-full rounded-t transition-all duration-500" style="height:'+Math.max(h,v>0?4:0)+'px;background:'+d.color+';opacity:'+(v>0?'1':'0.15')+'"></div>'+
+      '<span class="text-[9px] text-gray-600 leading-none truncate w-full text-center">'+range.subLabels[i]+'</span>'+
+    '</div>';
+  });
+  html+='</div></div>';
+  // Task list
+  html+='<div class="space-y-2">';
+  tasks.forEach(t=>{
+    const ds=t.date?t.date.slice(0,10):'未知';
+    html+='<div class="flex items-center gap-3 bg-[#18181B] rounded-lg px-3 py-2.5">'+
+      '<span class="text-green-400 text-xs flex-shrink-0">✓</span>'+
+      '<span class="text-sm text-gray-300 flex-1 truncate">'+t.title+'</span>'+
+      '<span class="text-xs font-bold flex-shrink-0" style="color:'+d.color+'">+'+t.val+'</span>'+
+      '<span class="text-[10px] text-gray-600 flex-shrink-0">'+ds+'</span></div>';
+  });
+  html+='</div>';
+  detail.innerHTML=html;
+}
+function closeTrackerDetail(){
+  const main=document.getElementById('trackerMain');
+  const detail=document.getElementById('trackerDetail');
+  if(main)main.classList.remove('hidden');
+  if(detail)detail.classList.add('hidden');
 }
 function showAddCatModal(){
   const m=document.getElementById('addCatModal');
@@ -1184,7 +1251,7 @@ function delRoutine(i){ud.routines.splice(i,1);saveData();showRoutineModal();}
 // ==================== DETAIL ====================
 function openDetail(id){
   const t=ud.tasks.find(t=>t.id===id);if(!t)return;
-  const c=CATS.find(x=>x.id===t.category)||CATS[0];
+  const c=getCat(t.category);
   // Show detail sheet on ALL devices (not just mobile)
   document.getElementById('detailSheet').classList.remove('hidden');
   document.getElementById('detailSheet').classList.add('flex');
