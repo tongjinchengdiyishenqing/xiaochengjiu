@@ -73,6 +73,7 @@ input,select,textarea{font-family:inherit;outline:none;border:none}
         <button onclick="setView('history');toggleMobMenu()" class="mob-nav w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-left text-gray-500 hover:bg-[#27272A]" data-v="history">📜 历史</button>
         <button onclick="setView('badges');toggleMobMenu()" class="mob-nav w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-left text-gray-500 hover:bg-[#27272A]" data-v="badges">🏆 徽章</button>
         <button onclick="setView('goals');toggleMobMenu()" class="mob-nav w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-left text-gray-500 hover:bg-[#27272A]" data-v="goals">🎯 目标</button>
+        <button onclick="setView('tracker');toggleMobMenu()" class="mob-nav w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-left text-gray-500 hover:bg-[#27272A]" data-v="tracker">📊 分类追踪</button>
         <button onclick="setView('stats');toggleMobMenu()" class="mob-nav w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-left text-gray-500 hover:bg-[#27272A]" data-v="stats">📊 统计</button>
       </div>
       <div class="absolute bottom-0 left-0 right-0 p-3 border-t border-[#27272A]">
@@ -111,6 +112,7 @@ input,select,textarea{font-family:inherit;outline:none;border:none}
         <button onclick="setView('history')" class="desk-nav w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs text-left text-gray-500 hover:bg-[#27272A]" data-v="history">📜 历史</button>
         <button onclick="setView('badges')" class="desk-nav w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs text-left text-gray-500 hover:bg-[#27272A]" data-v="badges">🏆 徽章</button>
         <button onclick="setView('goals')" class="desk-nav w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs text-left text-gray-500 hover:bg-[#27272A]" data-v="goals">🎯 目标</button>
+        <button onclick="setView('tracker')" class="desk-nav w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs text-left text-gray-500 hover:bg-[#27272A]" data-v="tracker">📊 分类追踪</button>
         <button onclick="setView('stats')" class="desk-nav w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs text-left text-gray-500 hover:bg-[#27272A]" data-v="stats">📊 统计</button>
       </div>
       <div class="mt-auto p-3 border-t border-[#27272A]">
@@ -216,6 +218,20 @@ input,select,textarea{font-family:inherit;outline:none;border:none}
         <div id="weekChart" class="flex items-end gap-2 h-28 md:h-32"></div>
         <h2 class="text-sm font-semibold text-gray-400 mb-3 mt-6">习惯追踪 <span class="text-xs text-gray-600">（完成任务时自动提取数字）</span></h2>
         <div id="trackStats"></div>
+      </div>
+
+      <!-- TRACKER -->
+      <div id="v-tracker" class="vp p-4 md:p-6 max-w-2xl mx-auto hidden">
+        <div id="trackerMain">
+          <div class="flex items-center justify-between mb-5">
+            <h1 class="text-lg md:text-xl font-bold">分类追踪</h1>
+            <button onclick="showAddCatModal()" class="text-xs bg-[#8B5CF6] text-white px-3 py-1.5 rounded-lg font-semibold">+ 新分类</button>
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6" id="trackerPeriodStats"></div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6" id="trackerCatGrid"></div>
+          <div id="trackerCatList" class="space-y-2"></div>
+        </div>
+        <div id="trackerDetail" class="hidden"></div>
       </div>
 
       <!-- GOALS -->
@@ -383,6 +399,27 @@ input,select,textarea{font-family:inherit;outline:none;border:none}
   </div>
 </div>
 
+<!-- Custom Category Modal -->
+<div id="addCatModal" class="fixed inset-0 z-[100] hidden items-center justify-center">
+  <div class="absolute inset-0 bg-black/60" onclick="closeAddCatModal()"></div>
+  <div class="relative bg-[#18181B] border border-[#27272A] rounded-xl p-5 w-72 md:w-80 modal-box mx-4 max-h-[85vh] overflow-y-auto">
+    <h3 class="text-sm font-bold mb-4">添加自定义分类</h3>
+    <div class="space-y-3">
+      <div><label class="text-xs text-gray-500 mb-1 block">分类名称</label><input type="text" id="ccName" placeholder="如：编程" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2.5 text-sm text-white focus:border-[#8B5CF6] outline-none"></div>
+      <div class="flex gap-2">
+        <div class="flex-1"><label class="text-xs text-gray-500 mb-1 block">图标（emoji）</label><input type="text" id="ccIcon" placeholder="💻" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2.5 text-sm text-white focus:border-[#8B5CF6] outline-none"></div>
+        <div class="flex-1"><label class="text-xs text-gray-500 mb-1 block">单位（可选）</label><input type="text" id="ccUnit" placeholder="如：行" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2.5 text-sm text-white focus:border-[#8B5CF6] outline-none"></div>
+      </div>
+      <div><label class="text-xs text-gray-500 mb-1 block">颜色</label><div class="flex gap-2" id="ccColors"></div><input type="hidden" id="ccColor" value="#8B5CF6"></div>
+    </div>
+    <div class="flex gap-2 mt-4">
+      <button onclick="closeAddCatModal()" class="flex-1 py-2.5 rounded-lg text-sm bg-[#27272A] text-gray-400">取消</button>
+      <button onclick="saveCustomCat()" class="flex-1 py-2.5 rounded-lg text-sm font-bold bg-[#8B5CF6] text-white">添加</button>
+    </div>
+  </div>
+</div>
+
+
 
 
 
@@ -457,10 +494,10 @@ let _uploading=false;
 let _lastCloudVer=0;
 function today(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 function today_fmt(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
-function defaultData(){return{tasks:[],xp:0,totalCompleted:0,streak:0,maxStreak:0,badges:[],customBadges:[],dailyLog:{},lastActive:null,profile:{name:'我',avatar:'🐱'},dock:['today','calendar','history','badges','goals'],routines:[],goals:[],goalLogs:{},lastRoutineGen:null,theme:'purple',createdAt:today(),trackStats:{},_v:3}}
+function defaultData(){return{tasks:[],xp:0,totalCompleted:0,streak:0,maxStreak:0,badges:[],customBadges:[],dailyLog:{},lastActive:null,profile:{name:'我',avatar:'🐱'},dock:['today','calendar','history','badges','goals'],routines:[],goals:[],goalLogs:{},lastRoutineGen:null,theme:'purple',createdAt:today(),trackStats:{},customCats:[],_v:3}}
 function mergeData(d){
   const def=defaultData();
-  return{...def,...d,profile:{...def.profile,...(d.profile||{})},dock:d.dock||def.dock,routines:d.routines||[],goals:d.goals||[],goalLogs:d.goalLogs||{},lastRoutineGen:d.lastRoutineGen||null,theme:d.theme||'purple',trackStats:d.trackStats||{},_v:3};
+  return{...def,...d,profile:{...def.profile,...(d.profile||{})},dock:d.dock||def.dock,routines:d.routines||[],goals:d.goals||[],goalLogs:d.goalLogs||{},lastRoutineGen:d.lastRoutineGen||null,theme:d.theme||'purple',trackStats:d.trackStats||{},customCats:d.customCats||[],_v:3};
 }
 // ==================== TRACK RULES (auto-extract stats from task titles) ====================
 const TRACK_RULES=[
@@ -697,7 +734,7 @@ function checkBadges(){
 // ==================== RENDER ====================
 let _calOpenDs=null;
 function renderAll(){
-  renderHeader();renderSidebar();renderToday();renderTimeline();renderCalendar();renderHistory();renderBadges();renderStats();renderGoals();
+  renderHeader();renderSidebar();renderToday();renderTimeline();renderCalendar();renderHistory();renderBadges();renderStats();renderGoals();renderTracker();
   if(_calOpenDs)showCalDay(_calOpenDs);
 }
 function renderHeader(){
@@ -924,6 +961,191 @@ function renderTrackStats(){
   html+='</div>';
   container.innerHTML=html;
 }
+// ==================== TRACKER (custom categories + period stats) ====================
+function getAllCats(){
+  // Merge built-in CATS with customCats
+  const builtin=CATS.map(c=>({id:c.id,label:c.label,icon:c.icon,color:c.c,unit:'',custom:false}));
+  const custom=(ud.customCats||[]).map(c=>({id:c.id,label:c.label,icon:c.icon||'📌',color:c.color||'#8B5CF6',unit:c.unit||'',custom:true}));
+  return builtin.concat(custom);
+}
+function renderTracker(){
+  renderTrackerPeriods();
+  renderTrackerCats();
+}
+function renderTrackerPeriods(){
+  const container=document.getElementById('trackerPeriodStats');
+  if(!container)return;
+  const now=new Date();
+  // This week (Mon-Sun)
+  const weekStart=new Date(now);weekStart.setDate(now.getDate()-((now.getDay()+6)%7));weekStart.setHours(0,0,0,0);
+  // This month
+  const monthStart=new Date(now.getFullYear(),now.getMonth(),1);
+  // This year
+  const yearStart=new Date(now.getFullYear(),0,1);
+  const ws=weekStart.getTime(),ms=monthStart.getTime(),ys=yearStart.getTime();
+  let wCount=0,mCount=0,yCount=0,allCount=0;
+  ud.tasks.forEach(t=>{
+    if(!t.completed||!t.completedAt)return;
+    const ts=new Date(t.completedAt).getTime();
+    if(ts>=ws)wCount++;
+    if(ts>=ms)mCount++;
+    if(ts>=ys)yCount++;
+    allCount++;
+  });
+  const items=[
+    {label:'本周',val:wCount,icon:'📅'},
+    {label:'本月',val:mCount,icon:'🗓️'},
+    {label:'本年',val:yCount,icon:'🏆'},
+    {label:'累计',val:allCount,icon:'✅'},
+  ];
+  container.innerHTML=items.map(i=>
+    '<div class="bg-[#18181B] rounded-xl p-4 text-center">'+
+    '<div class="text-2xl mb-1">'+i.icon+'</div>'+
+    '<div class="text-2xl font-bold" style="color:var(--ac)">'+i.val+'</div>'+
+    '<div class="text-xs text-gray-500 mt-0.5">'+i.label+'完成</div></div>'
+  ).join('');
+}
+function renderTrackerCats(){
+  const container=document.getElementById('trackerCatGrid');
+  if(!container)return;
+  const cats=getAllCats();
+  const now=new Date();
+  const weekStart=new Date(now);weekStart.setDate(now.getDate()-((now.getDay()+6)%7));weekStart.setHours(0,0,0,0);
+  let html='';
+  cats.forEach(c=>{
+    const completed=ud.tasks.filter(t=>t.completed&&t.category===c.id);
+    const weekCount=completed.filter(t=>t.completedAt&&new Date(t.completedAt).getTime()>=weekStart.getTime()).length;
+    const lastDate=completed.length>0?completed.sort((a,b)=>new Date(b.completedAt)-new Date(a.completedAt))[0].completedAt:null;
+    const lastStr=lastDate?lastDate.slice(0,10):'无';
+    html+='<div class="bg-[#18181B] rounded-xl p-4 cursor-pointer hover:bg-[#27272A] transition-colors" onclick="showTrackerCatDetail(\''+c.id+'\')">'+
+      '<div class="flex items-center gap-3 mb-2">'+
+        '<span class="text-2xl">'+c.icon+'</span>'+
+        '<div class="flex-1"><div class="text-sm font-bold">'+c.label+'</div>'+
+        '<div class="text-xs text-gray-500">'+(c.custom?'自定义':'内置')+(c.unit?' · 单位:'+c.unit:'')+'</div></div>'+
+        '<div class="text-right"><div class="text-lg font-bold" style="color:'+c.color+'">'+completed.length+'</div>'+
+        '<div class="text-[10px] text-gray-500">总完成</div></div>'+
+      '</div>'+
+      '<div class="flex items-center justify-between text-[10px] text-gray-500">'+
+        '<span>本周 '+weekCount+'</span>'+
+        '<span>最近: '+lastStr+'</span>'+
+      '</div></div>';
+  });
+  container.innerHTML=html;
+}
+function showTrackerCatDetail(catId){
+  const cats=getAllCats();
+  const c=cats.find(x=>x.id===catId);if(!c)return;
+  const tasks=ud.tasks.filter(t=>t.completed&&t.category===catId);
+  // Group by date
+  const byDate={};
+  tasks.forEach(t=>{
+    const d=t.completedAt?t.completedAt.slice(0,10):(t.createdAt||'未知');
+    if(!byDate[d])byDate[d]=[];
+    byDate[d].push(t);
+  });
+  const dates=Object.keys(byDate).sort().reverse();
+  // Period stats
+  const now=new Date();
+  const weekStart=new Date(now);weekStart.setDate(now.getDate()-((now.getDay()+6)%7));weekStart.setHours(0,0,0,0);
+  const monthStart=new Date(now.getFullYear(),now.getMonth(),1);
+  const yearStart=new Date(now.getFullYear(),0,1);
+  let wc=0,mc=0,yc=0;
+  tasks.forEach(t=>{
+    if(!t.completedAt)return;
+    const ts=new Date(t.completedAt).getTime();
+    if(ts>=weekStart)wc++;if(ts>=monthStart)mc++;if(ts>=yearStart)yc++;
+  });
+  const main=document.getElementById('trackerMain');
+  const detail=document.getElementById('trackerDetail');
+  if(main)main.classList.add('hidden');
+  if(detail)detail.classList.remove('hidden');
+  let html='<div class="flex items-center gap-3 mb-5">'+
+    '<button onclick="closeTrackerDetail()" class="text-gray-500 text-sm">← 返回</button>'+
+    '<span class="text-2xl">'+c.icon+'</span>'+
+    '<h1 class="text-lg font-bold flex-1">'+c.label+'</h1>';
+  if(c.custom)html+='<button onclick="delCustomCat(\''+c.id+'\')" class="text-xs text-red-400">删除分类</button>';
+  html+='</div>';
+  // Period stats
+  html+='<div class="grid grid-cols-4 gap-2 mb-5">'+
+    '<div class="bg-[#18181B] rounded-lg p-3 text-center"><div class="text-lg font-bold" style="color:var(--ac)">'+wc+'</div><div class="text-[10px] text-gray-500">本周</div></div>'+
+    '<div class="bg-[#18181B] rounded-lg p-3 text-center"><div class="text-lg font-bold" style="color:var(--ac)">'+mc+'</div><div class="text-[10px] text-gray-500">本月</div></div>'+
+    '<div class="bg-[#18181B] rounded-lg p-3 text-center"><div class="text-lg font-bold" style="color:var(--ac)">'+yc+'</div><div class="text-[10px] text-gray-500">本年</div></div>'+
+    '<div class="bg-[#18181B] rounded-lg p-3 text-center"><div class="text-lg font-bold" style="color:var(--ac)">'+tasks.length+'</div><div class="text-[10px] text-gray-500">累计</div></div>'+
+    '</div>';
+  if(c.unit){
+    // Sum extracted values for this category
+    let total=0;
+    tasks.forEach(t=>{
+      const extracted=extractTrack(t.title||'');
+      extracted.forEach(e=>{if(e.key===c.id)total+=e.val});
+    });
+    if(total>0)html+='<div class="bg-[#18181B] rounded-xl p-4 mb-5 text-center"><div class="text-2xl font-bold" style="color:'+c.color+'">'+total+'</div><div class="text-xs text-gray-500">'+c.label+'累计（'+c.unit+'）</div></div>';
+  }
+  // Task list by date
+  if(dates.length===0){
+    html+='<div class="text-center py-12 text-gray-500 text-sm">还没有完成过该分类的任务</div>';
+  }else{
+    html+='<div class="space-y-3">';
+    dates.forEach(d=>{
+      const dayTasks=byDate[d];
+      html+='<div><div class="text-xs text-gray-500 mb-1.5 sticky top-0 bg-[#09090B] py-1">'+d+'（'+dayTasks.length+'个）</div>';
+      html+='<div class="space-y-1">';
+      dayTasks.forEach(t=>{
+        html+='<div class="flex items-center gap-2 bg-[#18181B] rounded-lg px-3 py-2">'+
+          '<span class="text-green-400 text-xs">✓</span>'+
+          '<span class="text-sm text-gray-300 flex-1 truncate">'+(t.title||'')+'</span>'+
+          '</div>';
+      });
+      html+='</div></div>';
+    });
+    html+='</div>';
+  }
+  detail.innerHTML=html;
+}
+function closeTrackerDetail(){
+  const main=document.getElementById('trackerMain');
+  const detail=document.getElementById('trackerDetail');
+  if(main)main.classList.remove('hidden');
+  if(detail)detail.classList.add('hidden');
+}
+function showAddCatModal(){
+  const m=document.getElementById('addCatModal');
+  if(!m)return;
+  // Reset form
+  document.getElementById('ccName').value='';
+  document.getElementById('ccIcon').value='';
+  document.getElementById('ccUnit').value='';
+  document.getElementById('ccColor').value='#8B5CF6';
+  // Render color buttons
+  const cc=document.getElementById('ccColors');
+  if(cc){
+    cc.innerHTML=['#8B5CF6','#3B82F6','#F59E0B','#10B981','#EC4899','#F97316','#14B8A6','#6366F1'].map((col,i)=>
+      '<button type="button" onclick="document.getElementById(\'ccColor\').value=\''+col+'\';document.querySelectorAll(\'#ccColors button\').forEach(b=>b.style.borderColor=\'#3F3F46\');this.style.borderColor=\''+col+'\'" class="w-8 h-8 rounded-full border-2 '+(i===0?'border-[#8B5CF6]':'border-[#3F3F46]')+'" style="background:'+col+'"></button>'
+    ).join('');
+  }
+  m.classList.remove('hidden');m.classList.add('flex');
+}
+function closeAddCatModal(){const m=document.getElementById('addCatModal');if(m){m.classList.add('hidden');m.classList.remove('flex')}}
+function saveCustomCat(){
+  const name=document.getElementById('ccName').value.trim();
+  const icon=document.getElementById('ccIcon').value.trim()||'📌';
+  const unit=document.getElementById('ccUnit').value.trim();
+  const color=document.getElementById('ccColor').value||'#8B5CF6';
+  if(!name){alert('请填写分类名称');return}
+  const id='custom_'+Date.now();
+  if(!ud.customCats)ud.customCats=[];
+  ud.customCats.push({id,label:name,icon,unit,color});
+  saveData();
+  closeAddCatModal();
+  renderTracker();
+}
+function delCustomCat(id){
+  if(!confirm('删除该分类？已完成任务不会被删除，但会失去分类关联。'))return;
+  ud.customCats=(ud.customCats||[]).filter(c=>c.id!==id);
+  saveData();
+  closeTrackerDetail();
+  renderTracker();
+}
 function renderGoals(){
   const list=document.getElementById('goalList'),empty=document.getElementById('emptyGoals');
   if(!ud.goals||!ud.goals.length){if(list)list.innerHTML='';if(empty)empty.classList.remove('hidden');return}
@@ -995,7 +1217,7 @@ function openDetail(id){
   document.getElementById('detailSheet').classList.add('flex');
   const html='<div class="space-y-3">'+
     '<div><label class="text-xs text-gray-500 mb-1 block">任务标题</label><input type="text" value="'+t.title.replace(/"/g,'&quot;')+'" onchange="updTask('+t.id+',{title:this.value})" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2.5 text-sm text-white focus:border-[#8B5CF6] outline-none"></div>'+
-    '<div><label class="text-xs text-gray-500 mb-1 block">分类</label><div class="flex flex-wrap gap-1.5" id="dtCats">'+CATS.map(c=>'<button onclick="updTask('+t.id+',{category:\''+c.id+'\'});detailSelCat(this)" class="dt-cat flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border '+(t.category===c.id?'border-[#8B5CF6] bg-[#8B5CF6]/10 text-[#8B5CF6]':'border-[#3F3F46] bg-[#09090B] text-gray-500')+'">'+c.icon+' '+c.label+'</button>').join('')+'</div></div>'+
+    '<div><label class="text-xs text-gray-500 mb-1 block">分类</label><div class="flex flex-wrap gap-1.5" id="dtCats">'+getAllCats().map(c=>'<button onclick="updTask('+t.id+',{category:\''+c.id+'\'});detailSelCat(this)" class="dt-cat flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border '+(t.category===c.id?'border-[#8B5CF6] bg-[#8B5CF6]/10 text-[#8B5CF6]':'border-[#3F3F46] bg-[#09090B] text-gray-500')+'">'+c.icon+' '+c.label+'</button>').join('')+'</div></div>'+
     '<div><label class="text-xs text-gray-500 mb-1 block">优先级</label><div class="flex gap-1.5" id="dtPri"><button onclick="updTask('+t.id+',{priority:\'high\'});detailSelPri(this,\'high\')" class="dt-pri flex-1 py-2 rounded-lg text-xs font-semibold border '+(t.priority==='high'?'border-red-500 bg-red-500/10 text-red-400':'border-[#3F3F46] bg-[#09090B] text-gray-500')+'">🔴 高</button><button onclick="updTask('+t.id+',{priority:\'mid\'});detailSelPri(this,\'mid\')" class="dt-pri flex-1 py-2 rounded-lg text-xs font-semibold border '+(t.priority==='mid'?'border-[#8B5CF6] bg-[#8B5CF6]/10 text-[#8B5CF6]':'border-[#3F3F46] bg-[#09090B] text-gray-500')+'">🟡 中</button><button onclick="updTask('+t.id+',{priority:\'low\'});detailSelPri(this,\'low\')" class="dt-pri flex-1 py-2 rounded-lg text-xs font-semibold border '+(t.priority==='low'?'border-blue-400 bg-blue-400/10 text-blue-400':'border-[#3F3F46] bg-[#09090B] text-gray-500')+'">⚪ 低</button></div></div>'+
     '<div class="flex gap-2"><div class="flex-1"><label class="text-xs text-gray-500 mb-1 block">日期</label><input type="date" value="'+t.createdAt+'" onchange="updTask('+t.id+',{createdAt:this.value})" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2.5 text-sm text-white"></div><div class="flex-1"><label class="text-xs text-gray-500 mb-1 block">时间</label><input type="time" value="'+t.time+'" onchange="updTask('+t.id+',{time:this.value})" class="w-full bg-[#09090B] border border-[#3F3F46] rounded-lg px-3 py-2.5 text-sm text-white"></div></div>'+
     '</div>'+
@@ -1067,7 +1289,7 @@ function setView(v){
   if(a){a.classList.add('bg-[#27272A]','text-white');a.classList.remove('text-gray-500')}
   const t=document.querySelector('.mob-tab[data-v="'+v+'"]');
   if(t){t.classList.add('text-[#8B5CF6]');t.classList.remove('text-gray-500')}
-  const titles={today:'今日任务',calendar:'日历',timeline:'时间轴',history:'历史任务',badges:'成就徽章',stats:'数据统计',goals:'年度目标'};
+  const titles={today:'今日任务',calendar:'日历',timeline:'时间轴',history:'历史任务',badges:'成就徽章',stats:'数据统计',goals:'年度目标',tracker:'分类追踪'};
   if(document.getElementById('deskTitle'))document.getElementById('deskTitle').textContent=titles[v]||'';
   closeDetail();
 }
@@ -1091,7 +1313,7 @@ function showCat(title){
   document.getElementById('repeatRange').classList.add('hidden');
   document.querySelectorAll('.pri-btn').forEach(b=>{b.classList.remove('active-pri');b.classList.remove('border-[#8B5CF6]','bg-[#8B5CF6]/10','text-[#8B5CF6]','border-red-500','bg-red-500/10','text-red-400','border-blue-400','bg-blue-400/10','text-blue-400');b.classList.add('border-[#3F3F46]','bg-[#09090B]','text-gray-500')});
   const midBtn=document.querySelectorAll('.pri-btn')[1];if(midBtn){midBtn.classList.remove('border-[#3F3F46]','bg-[#09090B]','text-gray-500');midBtn.classList.add('border-[#8B5CF6]','bg-[#8B5CF6]/10','text-[#8B5CF6]','active-pri')}
-  document.getElementById('catOpts').innerHTML=CATS.map(c=>'<button onclick="confirmCat(\''+c.id+'\')" class="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-white hover:bg-[#27272A] transition-colors"><span>'+c.icon+'</span> '+c.label+'</button>').join('');
+  document.getElementById('catOpts').innerHTML=getAllCats().map(c=>'<button onclick="confirmCat(\''+c.id+'\')" class="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-white hover:bg-[#27272A] transition-colors"><span>'+c.icon+'</span> '+c.label+(c.custom?' <span class="text-[10px] text-gray-600">自定义</span>':'')+'</button>').join('');
   const m=document.getElementById('catModal');m.classList.remove('hidden');m.classList.add('flex');
 }
 function selPri(val,btn){
@@ -1125,7 +1347,7 @@ function doAddCustomBadge(){
   document.getElementById('cbName').value='';document.getElementById('cbIcon').value='';document.getElementById('cbDesc').value='';document.getElementById('cbTarget').value='1';
 }
 let _pfSelAva=null;
-const DOCK_ITEMS=[{id:'today',label:'任务'},{id:'calendar',label:'日历'},{id:'history',label:'历史'},{id:'badges',label:'徽章'},{id:'goals',label:'目标'},{id:'timeline',label:'时间轴'},{id:'stats',label:'统计'}];
+const DOCK_ITEMS=[{id:'today',label:'任务'},{id:'calendar',label:'日历'},{id:'history',label:'历史'},{id:'badges',label:'徽章'},{id:'goals',label:'目标'},{id:'timeline',label:'时间轴'},{id:'tracker',label:'追踪'},{id:'stats',label:'统计'}];
 function showProfile(){
   const p=ud.profile||{name:'我',avatar:'🐱'};
   const lv=getLv(ud.xp),nx=nextLvXp(ud.xp),cx=lvStartXp(lv),pct=Math.min(100,((ud.xp-cx)/(nx-cx))*100);
